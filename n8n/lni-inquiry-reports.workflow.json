@@ -6,9 +6,7 @@
         "pollTimes": {
           "item": [
             {
-              "mode": "everyX",
-              "value": 1,
-              "unit": "minutes"
+              "mode": "everyMinute"
             }
           ]
         },
