@@ -28,7 +28,7 @@ Every line should say `ok`. If one says `MISSING`, fix the name in `FIELDS` in `
    - `REQUIRE_DMARC_PASS` keep on. It's what stops someone faking an allowed sender's address. Mail you send yourself counts as authenticated (Gmail marks it Sent, which only your account can do).
    - `MAILBOX` the Gmail account the trigger reads.
 
-Every drafted reply ends with a small grey line, "Report prepared from Washington L&I open data." Leave it in: when you send a reply to yourself it comes back to the inbox with the tag in the subject, and that line is how the workflow knows not to answer its own reply.
+Every drafted reply has the line "Report prepared from Washington L&I open data." just before the sign-off. Leave it in: when you send a reply to yourself it comes back to the inbox with the tag in the subject, and that line is how the workflow knows not to answer its own reply.
 4. Save and **activate** the workflow. Until it's active, the trigger only runs when you click **Execute workflow** (it then takes the most recent matching email).
 
 ## 4. Test

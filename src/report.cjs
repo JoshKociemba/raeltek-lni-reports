@@ -94,7 +94,8 @@ const firstName = (name) => String(name || '').trim().split(/\s+/)[0].replace(/[
 
 function htmlBody(greeting, paragraphs, signature) {
   const p = (t) => `<p>${esc(t).replace(/\n/g, '<br>')}</p>`;
-  return [p(greeting), ...paragraphs.map(p), ...(String(signature || '').trim() ? [p(signature)] : []), `<p style="color:#888;font-size:12px">${esc(REPLY_MARKER)}</p>`].join('\n');
+  // The marker reads as part of the note, before the sign-off; Workspace appends the signature after it.
+  return [p(greeting), ...paragraphs.map(p), p(REPLY_MARKER), ...(String(signature || '').trim() ? [p(signature)] : [])].join('\n');
 }
 
 /** Check the model's text and fall back to a plain template if it's missing, too long or has placeholders. */
