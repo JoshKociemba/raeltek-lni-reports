@@ -29,8 +29,19 @@ test('an empty report says so and long reports are cut with a note', () => {
 test('reply text uses the model when it behaves, and a template otherwise', () => {
   const ok = { message: { content: "Here's the report you asked for, attached. It covers plumbers with insurance ending soon." } };
   assert.equal(replyText(ok, { title: 'X', count: 3 }), ok.message.content);
-  assert.match(replyText({ message: { content: 'See [REPORT] — thanks' } }, { title: 'Plumbing things', count: 3 }), /^Here's the report you requested/);
-  assert.match(replyText({ error: 'down' }, { title: 'Plumbing things', count: 1 }), /lists 1 contractor\./);
+  assert.match(replyText({ message: { content: 'See [REPORT] thanks' } }, { title: 'Plumbing things', count: 3 }), /^Attached is the report you asked for: 3 plumbing things\./);
+  assert.match(replyText({ error: 'down' }, { title: 'Plumbing contractors whose x', count: 1 }), /: 1 plumbing contractor whose x\./);
+  // qwen3 reasons out loud with only a closing tag; the answer after it is used.
+  const thinking = { message: { content: `${'Okay, let me think. '.repeat(300)}</think>\n\nThe report you asked for is attached — it lists 5 painters.` } };
+  assert.equal(replyText(thinking, { title: 'X', count: 5 }), 'The report you asked for is attached, it lists 5 painters.');
+  assert.match(replyText({ message: { content: '<think>still going' } }, { title: 'X things', count: 2 }), /^Attached is/);
+});
+
+test('the template says a requested count once', () => {
+  const title = 'The 5 painting contractors whose insurance on file with L&I expires soonest in the next 14 days';
+  assert.equal(replyText(null, { title, count: 5 }), "Attached is the report you asked for: the 5 painting contractors whose insurance on file with L&I expires soonest in the next 14 days. Let me know if you'd like it narrowed down or run again.");
+  assert.match(replyText(null, { title, count: 3 }), /: the 3 painting contractors/);
+  assert.match(replyText(null, { title: 'Painting contractors whose x', count: 0 }), /^I didn't find any painting contractors whose x\./);
 });
 
 test('the reply goes back to the sender in the same thread subject', () => {

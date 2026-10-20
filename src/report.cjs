@@ -89,17 +89,32 @@ ${allNotes.length ? `<ul class="notes">${allNotes.map((n) => `<li>${esc(n)}</li>
 `;
 }
 
-/** Ask the local model for two or three friendly sentences. The facts (count, title) are added by us, not the model. */
+/**
+ * What the report holds, said once, e.g. "the 5 painting contractors whose insurance … in the next 14 days" or
+ * "16 painting contractors whose …". The title already carries a requested count, so the count isn't repeated.
+ */
+function reportSummary({ title, count }) {
+  const lower = title.charAt(0).toLowerCase() + title.slice(1);
+  const asked = lower.match(/^the (\d+) /);
+  if (!count) return null;
+  if (asked) return Number(asked[1]) > count ? lower.replace(/^the \d+ /, `the ${count} `) : lower;
+  return `${count} ${count === 1 ? lower.replace(/\bcontractors\b/, 'contractor') : lower}`;
+}
+
+/** Ask the local model for a couple of friendly sentences. The facts come from us; the model only words them. */
 function replyRequest({ senderName, title, count, model }) {
+  const summary = reportSummary({ title, count });
+  const facts = summary ? `It lists ${summary}.` : `No contractors matched: ${title}.`;
   const prompt = `Write the body of a short, friendly reply email from Josh to ${senderName || 'a colleague'}, who asked for a report.
-Say the report they asked for is attached. Mention in plain words that it covers: ${title}. It lists ${count} contractor${count === 1 ? '' : 's'}.
-Two or three sentences. No greeting line, no sign-off, no subject, no placeholders, no dashes. Plain text only.`;
+Say the report they asked for is attached. ${facts}
+Say each fact once. One or two sentences. No greeting line, no sign-off, no subject, no placeholders, no dashes. Plain text only. /no_think`;
   return {
     model: model || 'qwen3:4b',
     messages: [{ role: 'user', content: prompt }],
     think: false,
     stream: false,
-    options: { temperature: 0.6 },
+    // qwen3 can still reason out loud despite think:false; the cap keeps a runaway answer from taking 40 seconds.
+    options: { temperature: 0.6, num_predict: 400 },
   };
 }
 
@@ -113,11 +128,18 @@ function htmlBody(greeting, paragraphs, signature) {
 
 /** Check the model's text and fall back to a plain template if it's missing, too long or has placeholders. */
 function replyText(ollama, { title, count }) {
-  const fallback = `Here's the report you requested, attached as a PDF. It covers ${title.charAt(0).toLowerCase()}${title.slice(1)}, and lists ${count} contractor${count === 1 ? '' : 's'}. Let me know if you'd like it narrowed down or run again.`;
+  const summary = reportSummary({ title, count });
+  const fallback = summary
+    ? `Attached is the report you asked for: ${summary}. Let me know if you'd like it narrowed down or run again.`
+    : `I didn't find any ${title.charAt(0).toLowerCase()}${title.slice(1)}. The attached report has the details; let me know if you'd like a wider search.`;
   let t = '';
   try { t = String(ollama.message.content || ''); } catch { return fallback; }
-  t = t.replace(/<think>[\s\S]*?<\/think>/g, '').replace(/^\s*(hi|hello|hey)\b[^\n]*\n/i, '').replace(/\n*(best|thanks|cheers|regards)[\s\S]*$/i, '').trim();
-  if (!t || t.length > 600 || /[[\]{}]|—|–/.test(t) || !/attach/i.test(t)) return fallback;
+  // Its reasoning can arrive with only the closing </think> tag, so drop everything up to the last one.
+  if (t.includes('</think>')) t = t.slice(t.lastIndexOf('</think>') + '</think>'.length);
+  else if (/<think>/.test(t)) return fallback;
+  t = t.replace(/^\s*(hi|hello|hey)\b[^\n]*\n/i, '').replace(/\n*(best|thanks|cheers|regards)[\s\S]*$/i, '')
+    .replace(/\s*[—–]\s*/g, ', ').replace(/^["']|["']$/g, '').trim();
+  if (!t || t.length > 500 || /[[\]{}]/.test(t) || !/attach/i.test(t)) return fallback;
   return t;
 }
 
@@ -142,4 +164,4 @@ function buildClarification({ inquiry, question, signature }) {
   };
 }
 
-module.exports = { esc, fmtDate, listedCount, reportFileName, renderReportHtml, replyRequest, replyText, buildReply, buildClarification };
+module.exports = { esc, fmtDate, listedCount, reportFileName, renderReportHtml, reportSummary, replyRequest, replyText, buildReply, buildClarification };
