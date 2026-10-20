@@ -1,6 +1,6 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { checkInquiry, parseAllowList, isAllowed, requestText, senderOf } = require('../src/inquiry.cjs');
+const { REPLY_MARKER, checkInquiry, parseAllowList, isAllowed, requestText, senderOf } = require('../src/inquiry.cjs');
 
 const auth = (domain) => ({ 'authentication-results': `Authentication-Results: mx.google.com; dkim=pass header.i=@${domain}; spf=pass; dmarc=pass (p=NONE sp=NONE dis=NONE) header.from=${domain}` });
 const email = (over = {}) => ({
@@ -47,4 +47,16 @@ test('quoted replies are dropped from the request', () => {
 test('sender parsing handles plain From strings', () => {
   assert.deepEqual(senderOf('"Pat Smith" <pat@example.com>'), { address: 'pat@example.com', name: 'Pat Smith' });
   assert.deepEqual(senderOf('pat@example.com'), { address: 'pat@example.com', name: '' });
+});
+
+test("Josh's own sent mail counts as authenticated, but our own replies are skipped", () => {
+  const own = email({ from: { value: [{ address: 'josh@raeltek.com', name: 'Josh' }] }, headers: {}, labelIds: ['SENT', 'INBOX'] });
+  assert.equal(checkInquiry({ email: own, allowList: 'josh@raeltek.com', mailbox: 'josh@raeltek.com' }).ok, true);
+  assert.equal(checkInquiry({ email: { ...own, labelIds: ['INBOX'] }, allowList: 'josh@raeltek.com', mailbox: 'josh@raeltek.com' }).ok, false, 'a forged From without SENT');
+  const reply = { ...own, subject: 'Re: [L&I Inquiry] plumbers', text: `Hi Josh,\n\nHere's the report.\n\nJosh\nRaeltek\n\n${REPLY_MARKER}` };
+  const r = checkInquiry({ email: reply, allowList: 'josh@raeltek.com', mailbox: 'josh@raeltek.com' });
+  assert.equal(r.ok, false);
+  assert.match(r.reason, /own report replies/);
+  const followUp = { ...own, subject: 'Re: [L&I Inquiry] plumbers', text: `Can you do roofers too?\n\nOn Mon, Oct 20, 2026 Josh wrote:\n> ${REPLY_MARKER}` };
+  assert.equal(checkInquiry({ email: followUp, allowList: 'josh@raeltek.com', mailbox: 'josh@raeltek.com' }).ok, true);
 });

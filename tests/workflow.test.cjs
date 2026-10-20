@@ -20,11 +20,11 @@ test('the workflow can only create drafts', () => {
   assert.ok(!/"operation":\s*"(send|reply)"/.test(json));
 });
 
-test('no credentials, tokens or sender list are committed', () => {
+test('no credentials or tokens are committed, and only Josh is allowed by default', () => {
   assert.ok(workflow.nodes.every((n) => !n.credentials));
   const settings = workflow.nodes.find((n) => n.name === 'Settings').parameters.assignments.assignments;
   const value = (name) => settings.find((a) => a.name === name).value;
-  assert.equal(value('ALLOWED_SENDERS'), '');
+  assert.equal(value('ALLOWED_SENDERS'), 'josh@raeltek.com');
   assert.equal(value('SOCRATA_APP_TOKEN'), '');
   assert.equal(value('REQUIRE_DMARC_PASS'), true);
 });

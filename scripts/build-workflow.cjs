@@ -15,7 +15,7 @@ const DEPS = {
   'inquiry.cjs': [],
   'understand.cjs': [],
   'lni.cjs': [],
-  'report.cjs': [],
+  'report.cjs': ['inquiry.cjs'],
 };
 
 /** Paste src files into a Code node, dropping require and module.exports lines that n8n can't run. */
@@ -71,8 +71,9 @@ const today = "const today = $now.setZone('America/Los_Angeles').toISODate();";
 node('New inquiry email', 'n8n-nodes-base.gmailTrigger', 1.2, [0, 0], {
   pollTimes: { item: [{ mode: 'everyX', value: 5, unit: 'minutes' }] },
   simple: false,
-  // Gmail search ignores the brackets; Check inquiries requires the exact [L&I Inquiry] tag.
-  filters: { q: 'subject:"L&I Inquiry" in:inbox -from:me' },
+  // Gmail search ignores the brackets; Check inquiries requires the exact [L&I Inquiry] tag. Mail from Josh
+  // himself is included (he's on the allow list), and his sent replies are skipped by their marker line.
+  filters: { q: 'subject:"L&I Inquiry" in:inbox' },
   options: {},
 });
 
@@ -80,8 +81,10 @@ node('Settings', 'n8n-nodes-base.set', 3.4, [1, 0], {
   assignments: {
     assignments: [
       // Who may ask for reports: one address (jane@example.com) or whole domain (@example.com) per line.
-      // Emails from anyone else are ignored without a reply. Fill this in n8n, not in Git.
-      ['ALLOWED_SENDERS', 'string', ''],
+      // Emails from anyone else are ignored without a reply. Add other people in n8n, not in Git.
+      ['ALLOWED_SENDERS', 'string', 'josh@raeltek.com'],
+      // The Gmail account the trigger reads. Its own sent mail counts as authenticated.
+      ['MAILBOX', 'string', 'josh@raeltek.com'],
       // Only trust the From address when Gmail's DMARC check passed for it. Turn off only for a sender whose
       // domain has no DMARC record, and only if you are sure of them.
       ['REQUIRE_DMARC_PASS', 'boolean', true],
@@ -105,7 +108,7 @@ node('Check inquiries', 'n8n-nodes-base.code', 2, [2, 0], { jsCode: bundle(['inq
 ${settings}
 // Ignored emails are listed in this node's output in n8n's execution log, with the reason, but get no reply.
 const results = $('New inquiry email').all().map((i) => checkInquiry({
-  email: i.json, allowList: s.ALLOWED_SENDERS, requireDmarc: s.REQUIRE_DMARC_PASS !== false,
+  email: i.json, allowList: s.ALLOWED_SENDERS, requireDmarc: s.REQUIRE_DMARC_PASS !== false, mailbox: s.MAILBOX,
 }));
 const ignored = results.filter((r) => !r.ok);
 if (ignored.length) console.log('Ignored:', JSON.stringify(ignored.map((r) => ({ from: r.sender.address, reason: r.reason }))));

@@ -37,6 +37,7 @@ test('the reply goes back to the sender in the same thread subject', () => {
   assert.equal(d.subject, 'Re: [L&I Inquiry] plumbers');
   assert.match(d.body_html, /^<p>Hi Pat,<\/p>/);
   assert.match(d.body_html, /Josh<br>Raeltek/);
+  assert.match(d.body_html, /Report prepared from Washington L&amp;I open data\./);
   const c = buildClarification({ inquiry, question: 'Which trade?', signature: 'Josh' });
   assert.match(c.body_html, /Which trade\?/);
 });

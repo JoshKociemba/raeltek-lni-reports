@@ -1,6 +1,9 @@
 // Decide whether an incoming email is an L&I inquiry from someone on the allowed list, and pull out the request.
 
 const SUBJECT_TAG = '[L&I Inquiry]';
+// Every reply the workflow drafts carries this line. When Josh sends a reply to himself it lands back in the
+// inbox with the tag in its subject, and this line is how we know not to answer our own reply.
+const REPLY_MARKER = 'Report prepared from Washington L&I open data.';
 
 /** One entry per line: a full address (jane@example.com) or a whole domain (@example.com). # starts a comment. */
 function parseAllowList(text) {
@@ -56,20 +59,24 @@ function requestText(text) {
 /**
  * Check one email from the Gmail trigger. Returns { ok: false, reason } to ignore it, or the details the
  * rest of the workflow needs. Ignored emails get no reply, so a stranger learns nothing.
+ * Mail Josh sends himself has no DMARC result (it never leaves Google), but only his own account can put the
+ * SENT label on a message, so a SENT message from the mailbox address counts as authenticated.
  */
-function checkInquiry({ email, allowList, requireDmarc = true }) {
+function checkInquiry({ email, allowList, requireDmarc = true, mailbox = '' }) {
   const subject = String(email.subject || '');
   const sender = senderOf(email.from);
   const base = { subject, sender, threadId: email.threadId || '', messageId: email.id || '' };
   if (!subject.toLowerCase().includes(SUBJECT_TAG.toLowerCase())) return { ...base, ok: false, reason: `Subject lacks ${SUBJECT_TAG}` };
   const list = parseAllowList(allowList);
   if (!isAllowed(sender.address, list)) return { ...base, ok: false, reason: `${sender.address || 'unknown sender'} is not on ALLOWED_SENDERS` };
-  if (requireDmarc && !dmarcPassed(email.headers, sender.address)) {
+  const ownSent = !!mailbox && sender.address === String(mailbox).trim().toLowerCase() && (email.labelIds || []).includes('SENT');
+  if (requireDmarc && !ownSent && !dmarcPassed(email.headers, sender.address)) {
     return { ...base, ok: false, reason: `DMARC did not pass for ${sender.address}; the From address may be forged` };
   }
-  const request = requestText(email.text || String(email.html || '').replace(/<[^>]+>/g, ' '));
+  const request = requestText(email.text || String(email.html || '').replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&'));
   if (!request) return { ...base, ok: false, reason: 'Empty request' };
+  if (request.includes(REPLY_MARKER)) return { ...base, ok: false, reason: 'This is one of our own report replies' };
   return { ...base, ok: true, request };
 }
 
-module.exports = { SUBJECT_TAG, parseAllowList, isAllowed, senderOf, dmarcPassed, requestText, checkInquiry };
+module.exports = { SUBJECT_TAG, REPLY_MARKER, parseAllowList, isAllowed, senderOf, dmarcPassed, requestText, checkInquiry };
