@@ -4,7 +4,7 @@ const { REPLY_MARKER, checkInquiry, parseAllowList, isAllowed, requestText, send
 
 const auth = (domain) => ({ 'authentication-results': `Authentication-Results: mx.google.com; dkim=pass header.i=@${domain}; spf=pass; dmarc=pass (p=NONE sp=NONE dis=NONE) header.from=${domain}` });
 const email = (over = {}) => ({
-  subject: '[L&I Inquiry] plumbers',
+  subject: '[L&I Report] plumbers',
   from: { value: [{ address: 'Pat@Example.com', name: 'Pat Smith' }] },
   headers: auth('example.com'),
   text: 'Can you find plumbing companies whose insurance is going to expire in the next 14 days?\n\nThanks\n--\nPat',
@@ -53,10 +53,10 @@ test("Josh's own sent mail counts as authenticated, but our own replies are skip
   const own = email({ from: { value: [{ address: 'josh@raeltek.com', name: 'Josh' }] }, headers: {}, labelIds: ['SENT', 'INBOX'] });
   assert.equal(checkInquiry({ email: own, allowList: 'josh@raeltek.com', mailbox: 'josh@raeltek.com' }).ok, true);
   assert.equal(checkInquiry({ email: { ...own, labelIds: ['INBOX'] }, allowList: 'josh@raeltek.com', mailbox: 'josh@raeltek.com' }).ok, false, 'a forged From without SENT');
-  const reply = { ...own, subject: 'Re: [L&I Inquiry] plumbers', text: `Hi Josh,\n\nHere's the report.\n\nJosh\nRaeltek\n\n${REPLY_MARKER}` };
+  const reply = { ...own, subject: 'Re: [L&I Report] plumbers', text: `Hi Josh,\n\nHere's the report.\n\nJosh\nRaeltek\n\n${REPLY_MARKER}` };
   const r = checkInquiry({ email: reply, allowList: 'josh@raeltek.com', mailbox: 'josh@raeltek.com' });
   assert.equal(r.ok, false);
   assert.match(r.reason, /own report replies/);
-  const followUp = { ...own, subject: 'Re: [L&I Inquiry] plumbers', text: `Can you do roofers too?\n\nOn Mon, Oct 20, 2026 Josh wrote:\n> ${REPLY_MARKER}` };
+  const followUp = { ...own, subject: 'Re: [L&I Report] plumbers', text: `Can you do roofers too?\n\nOn Mon, Oct 20, 2026 Josh wrote:\n> ${REPLY_MARKER}` };
   assert.equal(checkInquiry({ email: followUp, allowList: 'josh@raeltek.com', mailbox: 'josh@raeltek.com' }).ok, true);
 });

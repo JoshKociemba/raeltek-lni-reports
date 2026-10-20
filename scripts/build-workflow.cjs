@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // Generate n8n/lni-inquiry-reports.workflow.json from src/. The Code nodes get the src/ functions pasted in, so
 // src/ stays the master copy: change src/, run `npm run build:workflow`, then re-import the workflow in n8n.
-// The workflow only creates Gmail drafts. It has no send node, and tests/workflow.test.cjs checks that.
+// Replies go only to the person who asked, in their thread (sent, or saved as drafts when AUTO_SEND is off).
+// tests/workflow.test.cjs checks there's no other way to send mail.
 // Usage: node scripts/build-workflow.cjs [--check]   (--check exits 1 if the committed file is out of date)
 const fs = require('node:fs');
 const path = require('node:path');
@@ -15,7 +16,8 @@ const DEPS = {
   'inquiry.cjs': [],
   'understand.cjs': [],
   'lni.cjs': [],
-  'report.cjs': ['inquiry.cjs'],
+  'brand.cjs': [],
+  'report.cjs': ['inquiry.cjs', 'brand.cjs'],
 };
 
 /** Paste src files into a Code node, dropping require and module.exports lines that n8n can't run. */
@@ -71,9 +73,9 @@ const today = "const today = $now.setZone('America/Los_Angeles').toISODate();";
 node('New inquiry email', 'n8n-nodes-base.gmailTrigger', 1.2, [0, 0], {
   pollTimes: { item: [{ mode: 'everyX', value: 5, unit: 'minutes' }] },
   simple: false,
-  // Gmail search ignores the brackets; Check inquiries requires the exact [L&I Inquiry] tag. Mail from Josh
+  // Gmail search ignores the brackets; Check inquiries requires the exact [L&I Report] tag. Mail from Josh
   // himself is included (he's on the allow list), and his sent replies are skipped by their marker line.
-  filters: { q: 'subject:"L&I Inquiry" in:inbox' },
+  filters: { q: 'subject:"L&I Report" in:inbox' },
   options: {},
 });
 
@@ -88,6 +90,9 @@ node('Settings', 'n8n-nodes-base.set', 3.4, [1, 0], {
       // Only trust the From address when Gmail's DMARC check passed for it. Turn off only for a sender whose
       // domain has no DMARC record, and only if you are sure of them.
       ['REQUIRE_DMARC_PASS', 'boolean', true],
+      // On: replies (the report, or a clarifying question) are sent to the requester straight away (Josh, 2026-10-20).
+      // Off: they're saved as Gmail drafts in the thread for Josh to review and send.
+      ['AUTO_SEND', 'boolean', true],
       ['DEFAULT_DAYS', 'number', 14],
       ['MAX_DAYS', 'number', 90],
       // Rows printed in one PDF.
@@ -215,11 +220,23 @@ const plan = $('Plan query').first().json;
 const report = $('Build report').first().json;
 const draft = buildReply({ inquiry: plan.inquiry, title: plan.title, count: report.count, ollama: $('Write reply').first().json, signature: s.SIGN_OFF });
 const pdf = $input.first().binary.data;
-return [{ json: { draft, threadId: plan.inquiry.threadId }, binary: { data: { ...pdf, fileName: reportFileName(plan.query, today), mimeType: 'application/pdf' } } }];
+return [{ json: { draft, threadId: plan.inquiry.threadId, messageId: plan.inquiry.messageId }, binary: { data: { ...pdf, fileName: reportFileName(plan.query, today), mimeType: 'application/pdf' } } }];
 `);
 
-// Draft › Create only. There is deliberately no send node anywhere in this workflow.
-node('Draft report reply', 'n8n-nodes-base.gmail', 2.1, [17, 0], {
+const autoSend = "={{ $('Settings').first().json.AUTO_SEND }}";
+// Message › Reply goes back to the sender of the inquiry, in its thread, and nowhere else.
+const reply = (name, pos, attach) => node(name, 'n8n-nodes-base.gmail', 2.1, pos, {
+  operation: 'reply',
+  messageId: '={{ $json.messageId }}',
+  emailType: 'html',
+  message: '={{ $json.draft.body_html }}',
+  // Reply never adds n8n's "sent automatically with n8n" footer (only Message › Send does).
+  options: {
+    replyToSenderOnly: true,
+    ...(attach ? { attachmentsUi: { attachmentsBinary: [{ property: 'data' }] } } : {}),
+  },
+});
+const draft = (name, pos, attach) => node(name, 'n8n-nodes-base.gmail', 2.1, pos, {
   resource: 'draft',
   subject: '={{ $json.draft.subject }}',
   emailType: 'html',
@@ -227,23 +244,23 @@ node('Draft report reply', 'n8n-nodes-base.gmail', 2.1, [17, 0], {
   options: {
     sendTo: '={{ $json.draft.to }}',
     threadId: '={{ $json.threadId }}',
-    attachmentsUi: { attachmentsBinary: [{ property: 'data' }] },
+    ...(attach ? { attachmentsUi: { attachmentsBinary: [{ property: 'data' }] } } : {}),
   },
 });
+
+ifNode('Send report now?', [17, 0], autoSend);
+reply('Send report reply', [18, -1], true);
+draft('Draft report reply', [18, 1], true);
 
 code('Clarification email', [8, 2], ['report.cjs'], `
 ${settings}
 const plan = $input.first().json;
-return [{ json: { draft: buildClarification({ inquiry: plan.inquiry, question: plan.question, signature: s.SIGN_OFF }), threadId: plan.inquiry.threadId } }];
+return [{ json: { draft: buildClarification({ inquiry: plan.inquiry, question: plan.question, signature: s.SIGN_OFF }), threadId: plan.inquiry.threadId, messageId: plan.inquiry.messageId } }];
 `);
 
-node('Draft clarification', 'n8n-nodes-base.gmail', 2.1, [9, 2], {
-  resource: 'draft',
-  subject: '={{ $json.draft.subject }}',
-  emailType: 'html',
-  message: '={{ $json.draft.body_html }}',
-  options: { sendTo: '={{ $json.draft.to }}', threadId: '={{ $json.threadId }}' },
-});
+ifNode('Send clarification now?', [9, 2], autoSend);
+reply('Send clarification', [10, 1], false);
+draft('Draft clarification', [10, 3], false);
 
 // ---- Connections ----
 const connections = {};
@@ -255,9 +272,11 @@ const link = (from, to, output = 0) => {
 [['New inquiry email', 'Settings'], ['Settings', 'Check inquiries'], ['Check inquiries', 'Loop over inquiries'],
   ['Prepare', 'Understand request'], ['Understand request', 'Plan query'], ['Plan query', 'Understood?'],
   ['Fetch matches', 'Plan lookups'], ['Plan lookups', 'Fetch lookups'], ['Fetch lookups', 'Build report'], ['Build report', 'Write reply'],
-  ['Write reply', 'Report HTML'], ['Report HTML', 'HTML file'], ['HTML file', 'Make PDF'], ['Make PDF', 'Reply email'], ['Reply email', 'Draft report reply'],
-  ['Draft report reply', 'Loop over inquiries'], ['Clarification email', 'Draft clarification'],
-  ['Draft clarification', 'Loop over inquiries']].forEach(([a, b]) => link(a, b));
+  ['Write reply', 'Report HTML'], ['Report HTML', 'HTML file'], ['HTML file', 'Make PDF'], ['Make PDF', 'Reply email'], ['Reply email', 'Send report now?'],
+  ['Send report reply', 'Loop over inquiries'], ['Draft report reply', 'Loop over inquiries'], ['Clarification email', 'Send clarification now?'],
+  ['Send clarification', 'Loop over inquiries'], ['Draft clarification', 'Loop over inquiries']].forEach(([a, b]) => link(a, b));
+link('Send report now?', 'Send report reply', 0); link('Send report now?', 'Draft report reply', 1);
+link('Send clarification now?', 'Send clarification', 0); link('Send clarification now?', 'Draft clarification', 1);
 // Loop over inquiries: output 0 is "done", output 1 is the next inquiry.
 link('Loop over inquiries', 'Prepare', 1);
 link('Understood?', 'Fetch matches', 0); link('Understood?', 'Clarification email', 1);
