@@ -1,6 +1,6 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { parseUnderstanding, tradeFilters, describeQuery, understandRequest } = require('../src/understand.cjs');
+const { ruleParse, parseUnderstanding, tradeFilters, describeQuery, understandRequest } = require('../src/understand.cjs');
 
 const reply = (o) => ({ message: { content: JSON.stringify({ understood: true, report: 'insurance', trades: [], days: 14, cities: [], counties: [], clarifying_question: '', ...o }) } });
 
@@ -36,4 +36,33 @@ test('days are clamped and bad answers ask for clarification', () => {
   assert.deepEqual(unclear, { clear: false, question: 'Which trade?' });
   assert.equal(parseUnderstanding({ ollama: reply({ report: 'bond' }) }).clear, false);
   assert.match(parseUnderstanding({ ollama: { error: 'connection refused' } }).error, /connection refused/);
+});
+
+test("Josh's first real request is understood even when the model asks a needless question", () => {
+  const request = 'Can you send me a list of plumbers with insurance expiring in 14 days?\n\nThanks,\nJosh';
+  const confused = reply({ understood: false, clarifying_question: 'Do you mean plumbers who are licensed in Washington State?' });
+  const u = parseUnderstanding({ ollama: confused, request });
+  assert.equal(u.clear, true);
+  assert.deepEqual([u.query.report, u.query.days, u.query.trades], ['insurance', 14, ['plumbing']]);
+  // Works with Ollama down, too.
+  assert.equal(parseUnderstanding({ ollama: { error: 'connection refused' }, request }).clear, true);
+});
+
+test('wording rules read report type, window and trades', () => {
+  assert.deepEqual(ruleParse('roofers and electricians whose license expires in the next two weeks'), { report: 'license', days: 14, trades: ['electrical', 'roofing'] });
+  assert.deepEqual(ruleParse('general contractors with coverage lapsing this month'), { report: 'insurance', days: 30, trades: ['general contractor'] });
+  assert.deepEqual(ruleParse('HVAC companies, insurance, 3 weeks'), { report: 'insurance', days: 21, trades: ['hvac'] });
+  assert.equal(ruleParse('bonds expiring soon').report, 'bond');
+  assert.deepEqual(ruleParse('hello there'), { report: null, days: null, trades: [] });
+});
+
+test('the model still supplies cities, and wording wins on days and trades', () => {
+  const u = parseUnderstanding({ ollama: reply({ trades: ['roofing'], days: 30, cities: ['Vancouver'] }), request: 'plumbers in Vancouver, insurance in 14 days' });
+  assert.deepEqual([u.query.trades, u.query.days, u.query.cities], [['plumbing'], 14, ['VANCOUVER']]);
+});
+
+test('a bond request gets a fixed clarifying reply', () => {
+  const u = parseUnderstanding({ ollama: reply({}), request: 'plumbers whose bond expires in 14 days' });
+  assert.equal(u.clear, false);
+  assert.match(u.question, /Bond reports aren't available/);
 });

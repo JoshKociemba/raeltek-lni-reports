@@ -85,6 +85,7 @@ Fill in the JSON form for the request below. Use only what the request says.
 - trades: the trades they name, in plain words (e.g. "plumbing", "roofing"). Empty if they want every trade.
 - days: how many days ahead to look. "next two weeks" is 14, "this month" is 30. If they give none, use ${defaultDays}.
 - cities and counties: only places they name, without "WA" or "County". Empty if none.
+- All data is Washington State, so never ask which state, and never ask to confirm what the request already says.
 - understood: false only if you cannot tell what report they want. Then write one short clarifying_question
   to send back to them; otherwise clarifying_question is "".
 
@@ -123,30 +124,76 @@ const place = (s) => String(s || '').replace(/,?\s*(wa|washington)\.?$/i, '').re
  * Check the model's answer. Returns { clear: true, query } or { clear: false, question } for a clarifying reply.
  * Days are clamped to 1..maxDays.
  */
-function parseUnderstanding({ ollama, defaultDays = 14, maxDays = 90 }) {
-  let a;
+const NUMBER_WORDS = { a: 1, an: 1, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
+  eleven: 11, twelve: 12, fourteen: 14, fifteen: 15, twenty: 20, thirty: 30, sixty: 60, ninety: 90 };
+
+/**
+ * Plain-wording rules that run before the model, so a clear request ("plumbers with insurance expiring in 14
+ * days") never depends on its judgment. Returns what the wording settles; the model fills in the rest.
+ */
+function ruleParse(request) {
+  const t = ` ${String(request || '').toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ')} `;
+  const out = { report: null, days: null, trades: [] };
+  if (/ bond/.test(t)) out.report = 'bond';
+  else if (/ (insur|coverage|liabilit|policy|policies )/.test(t)) out.report = 'insurance';
+  else if (/ (licen[cs]|registration|registered|registrations )/.test(t)) out.report = 'license';
+  const m = t.match(/ (\d+|[a-z]+) (day|days|week|weeks|month|months) /);
+  const n = m && (/^\d+$/.test(m[1]) ? Number(m[1]) : NUMBER_WORDS[m[1]]);
+  if (n) out.days = n * (m[2].startsWith('week') ? 7 : m[2].startsWith('month') ? 30 : 1);
+  else if (/ (this|next|the coming) month /.test(t)) out.days = 30;
+  else if (/ (this|next) week /.test(t)) out.days = 7;
+  // Longest names first, so "general contractor" wins over "general".
+  const names = [...Object.keys(TRADES), ...Object.keys(ALIASES)].sort((x, y) => y.length - x.length);
+  let rest = t;
+  for (const name of names) {
+    if (rest.includes(` ${name} `) || rest.includes(` ${name}s `)) {
+      const f = tradeFilters(name);
+      if (f && !out.trades.includes(f.trade)) out.trades.push(f.trade);
+      rest = rest.split(` ${name} `).join(' ').split(` ${name}s `).join(' ');
+    }
+  }
+  return out;
+}
+
+/**
+ * Combine the wording rules with the model's answer. Returns { clear: true, query } or { clear: false, question }
+ * for a clarifying reply. When the rules settle the report type, the model can't turn it into a question, and a
+ * model that's down or returns nonsense only costs the cities.
+ */
+function parseUnderstanding({ ollama, request = '', defaultDays = 14, maxDays = 90 }) {
+  const rules = ruleParse(request);
+  if (rules.report === 'bond') {
+    return { clear: false, question: "Bond reports aren't available yet. Would an insurance or contractor registration report help instead?" };
+  }
+  let a = null;
+  let modelError = '';
   try {
     if (ollama && ollama.error) throw new Error(ollama.error.message || ollama.error);
     a = JSON.parse(ollama.message.content);
   } catch (err) {
-    return { clear: false, error: `Could not read the request: ${err.message}`, question: '' };
+    modelError = err.message;
   }
-  if (!a.understood || !REPORTS[a.report]) {
-    return { clear: false, question: String(a.clarifying_question || '').trim().slice(0, 500) };
+  if (!rules.report) {
+    if (!a) return { clear: false, error: `Could not read the request: ${modelError}`, question: '' };
+    if (!a.understood || !REPORTS[a.report]) return { clear: false, question: String(a.clarifying_question || '').trim().slice(0, 500) };
   }
-  const days = Math.min(Math.max(Math.round(Number(a.days) || defaultDays), 1), maxDays);
-  const trades = (Array.isArray(a.trades) ? a.trades : []).map(tradeFilters).filter(Boolean);
+  a = a || {};
+  const report = rules.report || a.report;
+  const askedDays = rules.days || Number(a.days) || defaultDays;
+  const days = Math.min(Math.max(Math.round(askedDays), 1), maxDays);
+  const tradeNames = rules.trades.length ? rules.trades : (Array.isArray(a.trades) ? a.trades : []);
+  const trades = tradeNames.map(tradeFilters).filter(Boolean);
   const list = (v) => [...new Set((Array.isArray(v) ? v : []).map(place).filter(Boolean))].slice(0, 10);
   return {
     clear: true,
     query: {
-      report: a.report,
+      report,
       days,
       trades: trades.map((t) => t.trade),
       filters: trades.flatMap((t) => t.filters),
       cities: list(a.cities),
       counties: list(a.counties),
-      daysCapped: Number(a.days) > maxDays,
+      daysCapped: askedDays > maxDays,
     },
   };
 }
@@ -161,4 +208,4 @@ function describeQuery(q) {
 
 const titleCase = (s) => String(s).toLowerCase().replace(/\b[a-z]/g, (c) => c.toUpperCase());
 
-module.exports = { TRADES, REPORTS, UNDERSTAND_SCHEMA, understandPrompt, understandRequest, tradeFilters, parseUnderstanding, describeQuery, titleCase };
+module.exports = { TRADES, REPORTS, UNDERSTAND_SCHEMA, understandPrompt, understandRequest, tradeFilters, ruleParse, parseUnderstanding, describeQuery, titleCase };
