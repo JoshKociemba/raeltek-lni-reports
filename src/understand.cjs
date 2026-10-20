@@ -86,8 +86,7 @@ Fill in the JSON form for the request below. Use only what the request says.
 - days: how many days ahead to look. "next two weeks" is 14, "this month" is 30. If they give none, use ${defaultDays}.
 - cities and counties: only places they name, without "WA" or "County". Empty if none.
 - All data is Washington State, so never ask which state, and never ask to confirm what the request already says.
-- understood: false only if you cannot tell what report they want. Then write one short clarifying_question
-  to send back to them; otherwise clarifying_question is "".
+- understood: false only if you cannot tell what report they want; clarifying_question is always "".
 
 Request:
 """
@@ -165,46 +164,66 @@ function ruleParse(request) {
   return out;
 }
 
+const CLARIFY_QUESTION = 'Would you like contractors whose insurance on file with L&I is expiring, or whose contractor registration is expiring? And for which trade, over how many days?';
+
 /**
- * Combine the wording rules with the model's answer. Returns { clear: true, query } or { clear: false, question }
- * for a clarifying reply. When the rules settle the report type, the model can't turn it into a question, and a
- * model that's down or returns nonsense only costs the cities.
+ * What the request means in its email thread. A reply to our clarifying question finishes the request that asked
+ * it, so the two are read together; any other reply is read alone and then filled in from the thread's last report.
+ * prior is { request } after a question or { query } after a report, kept per thread in the workflow's static data.
  */
-function parseUnderstanding({ ollama, request = '', defaultDays = 14, maxDays = 90, maxRows = 300 }) {
-  const rules = ruleParse(request);
+function threadText(request, prior) {
+  return prior && prior.request && !prior.query ? `${prior.request}\n${request}` : request;
+}
+
+/**
+ * Combine the wording rules with the model's answer. Returns { clear: true, query, notes } or { clear: false,
+ * question } for a clarifying reply. The model only supplies cities, or the report type when the wording has none;
+ * a model that's down or returns nonsense costs only those. Questions are fixed text: the model's were often off.
+ */
+function parseUnderstanding({ ollama, request = '', prior = null, defaultDays = 14, maxDays = 90, maxRows = 300 }) {
+  const text = threadText(request, prior);
+  const rules = ruleParse(text);
   if (rules.report === 'bond') {
     return { clear: false, question: "Bond reports aren't available yet. Would an insurance or contractor registration report help instead?" };
   }
   let a = null;
-  let modelError = '';
   try {
     if (ollama && ollama.error) throw new Error(ollama.error.message || ollama.error);
     a = JSON.parse(ollama.message.content);
-  } catch (err) {
-    modelError = err.message;
-  }
-  if (!rules.report) {
-    if (!a) return { clear: false, error: `Could not read the request: ${modelError}`, question: '' };
-    if (!a.understood || !REPORTS[a.report]) return { clear: false, question: String(a.clarifying_question || '').trim().slice(0, 500) };
+  } catch {
+    a = null;
   }
   a = a || {};
-  const report = rules.report || a.report;
-  const askedDays = rules.days || Number(a.days) || defaultDays;
+  const before = (prior && prior.query) || null;
+  const notes = [];
+  // A follow-up ("can you also send one with 4 plumbers?") keeps whatever it doesn't change from the last report.
+  let report = rules.report || (before && before.report) || (a.understood && REPORTS[a.report] ? a.report : null);
+  if (!report && (rules.trades.length || rules.limit)) {
+    report = 'insurance';
+    notes.push('The request named no report type, so this covers insurance expiring. Ask for contractor registration if you meant that.');
+  }
+  if (!report) return { clear: false, question: CLARIFY_QUESTION };
+  const askedDays = rules.days || (before && before.days) || Number(a.days) || defaultDays;
   const days = Math.min(Math.max(Math.round(askedDays), 1), maxDays);
-  const tradeNames = rules.trades.length ? rules.trades : (Array.isArray(a.trades) ? a.trades : []);
+  const tradeNames = rules.trades.length ? rules.trades : before ? before.trades : (Array.isArray(a.trades) ? a.trades : []);
   const trades = tradeNames.map(tradeFilters).filter(Boolean);
+  // A count carries over only while the trades do; "and roofers?" after "5 painters" lists every roofer.
+  const limit = rules.limit || (before && !rules.trades.length ? before.limit : null);
   const list = (v) => [...new Set((Array.isArray(v) ? v : []).map(place).filter(Boolean))].slice(0, 10);
+  const cities = list(a.cities);
+  const counties = list(a.counties);
   return {
     clear: true,
+    notes,
     query: {
       report,
       days,
       trades: trades.map((t) => t.trade),
       filters: trades.flatMap((t) => t.filters),
-      cities: list(a.cities),
-      counties: list(a.counties),
+      cities: cities.length || counties.length || !before ? cities : before.cities || [],
+      counties: cities.length || counties.length || !before ? counties : before.counties || [],
       daysCapped: askedDays > maxDays,
-      limit: rules.limit ? Math.min(rules.limit, maxRows) : null,
+      limit: limit ? Math.min(limit, maxRows) : null,
     },
   };
 }
@@ -220,4 +239,4 @@ function describeQuery(q) {
 
 const titleCase = (s) => String(s).toLowerCase().replace(/\b[a-z]/g, (c) => c.toUpperCase());
 
-module.exports = { TRADES, REPORTS, UNDERSTAND_SCHEMA, understandPrompt, understandRequest, tradeFilters, ruleParse, parseUnderstanding, describeQuery, titleCase };
+module.exports = { TRADES, REPORTS, CLARIFY_QUESTION, threadText, UNDERSTAND_SCHEMA, understandPrompt, understandRequest, tradeFilters, ruleParse, parseUnderstanding, describeQuery, titleCase };

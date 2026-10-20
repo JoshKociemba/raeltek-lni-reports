@@ -126,7 +126,11 @@ node('Loop over inquiries', 'n8n-nodes-base.splitInBatches', 3, [3, 0], { batchS
 code('Prepare', [4, 1], ['understand.cjs'], `
 ${settings}
 const inquiry = $input.first().json;
-return [{ json: { inquiry, ollama_request: understandRequest({ request: inquiry.request, model: s.OLLAMA_MODEL, defaultDays: Number(s.DEFAULT_DAYS) || 14 }) } }];
+// The last request in this email thread (see Plan query), so a follow-up or an answer to a question has context.
+const threads = $getWorkflowStaticData('global').threads || {};
+const prior = threads[inquiry.threadId] || null;
+const text = threadText(inquiry.request, prior);
+return [{ json: { inquiry, prior, ollama_request: understandRequest({ request: text, model: s.OLLAMA_MODEL, defaultDays: Number(s.DEFAULT_DAYS) || 14 }) } }];
 `);
 
 ollama('Understand request', [5, 1], '={{ JSON.stringify($json.ollama_request) }}');
@@ -134,12 +138,18 @@ ollama('Understand request', [5, 1], '={{ JSON.stringify($json.ollama_request) }
 code('Plan query', [6, 1], ['understand.cjs', 'lni.cjs'], `
 ${settings}
 ${today}
-const { inquiry } = $('Prepare').first().json;
-const u = parseUnderstanding({ ollama: $input.first().json, request: inquiry.request, defaultDays: Number(s.DEFAULT_DAYS) || 14, maxDays: Number(s.MAX_DAYS) || 90, maxRows: Number(s.MAX_ROWS) || 300 });
-if (u.error) throw new Error(u.error);
+const { inquiry, prior } = $('Prepare').first().json;
+const u = parseUnderstanding({ ollama: $input.first().json, request: inquiry.request, prior, defaultDays: Number(s.DEFAULT_DAYS) || 14, maxDays: Number(s.MAX_DAYS) || 90, maxRows: Number(s.MAX_ROWS) || 300 });
+// Remember this thread's request: the text after a question, so the answer completes it; the query after a report,
+// so a follow-up can change one part. Static data is saved when a production run finishes; keep the newest 200.
+const data = $getWorkflowStaticData('global');
+const threads = data.threads || {};
+delete threads[inquiry.threadId];
+threads[inquiry.threadId] = u.clear ? { query: u.query, at: today } : { request: threadText(inquiry.request, prior), at: today };
+data.threads = Object.fromEntries(Object.entries(threads).slice(-200));
 if (!u.clear) return [{ json: { inquiry, clear: false, question: u.question } }];
 const plan = planQuery({ query: u.query, today, appToken: s.SOCRATA_APP_TOKEN });
-return [{ json: { inquiry, clear: true, query: u.query, title: describeQuery(u.query), ...plan } }];
+return [{ json: { inquiry, clear: true, query: u.query, title: describeQuery(u.query), ...plan, notes: [...u.notes, ...plan.notes] } }];
 `);
 
 ifNode('Understood?', [7, 1], '={{ $json.clear }}');
