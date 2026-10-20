@@ -15,6 +15,8 @@ test('the report lists rows, escapes text and links to Verify', () => {
   assert.match(html, /Oct 25, 2026/);
   assert.match(html, /2 contractors with a policy ending in this window were left out/);
   assert.match(html, /data\.wa\.gov/);
+  assert.match(html, /<img src="data:image\/png;base64,[A-Za-z0-9+/=]{1000,}" alt="Raeltek">/);
+  assert.match(html, /#073F43/);
 });
 
 test('an empty report says so and long reports are cut with a note', () => {

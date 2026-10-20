@@ -1,5 +1,6 @@
 // The PDF report (as HTML for Gotenberg to print) and the reply email that carries it.
 const { REPLY_MARKER } = require('./inquiry.cjs');
+const { BRAND } = require('./brand.cjs');
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -32,7 +33,7 @@ function renderReportHtml({ title, query, window, rows, notes = [], stats = {}, 
       esc(r.name),
       `<a href="${esc(r.verify)}">${esc(r.license)}</a><br><span class="muted">${esc(r.ubi)}</span>`,
       esc(r.specialties),
-      esc(r.phone),
+      `<span class="nowrap">${esc(r.phone)}</span>`,
       esc(r.address),
     ];
     if (insurance) cells.push(`${esc(r.insurer)}${r.policy ? `<br><span class="muted">${esc(r.policy)}</span>` : ''}${r.agency ? `<br><span class="muted">Agent: ${esc(r.agency)}</span>` : ''}${r.amount ? `<br><span class="muted">${money(r.amount)}</span>` : ''}`);
@@ -47,25 +48,33 @@ function renderReportHtml({ title, query, window, rows, notes = [], stats = {}, 
   return `<!doctype html>
 <html><head><meta charset="utf-8"><title>${esc(title)}</title>
 <style>
-  @page { size: 11in 8.5in; margin: 0.5in; }
-  body { font-family: Helvetica, Arial, sans-serif; color: #1a1a1a; font-size: 9.5pt; }
-  h1 { font-size: 16pt; margin: 0 0 4px; }
-  .sub { color: #555; margin: 0 0 14px; }
-  .summary { display: flex; gap: 28px; margin: 0 0 14px; }
-  .summary b { display: block; font-size: 15pt; }
+  @page { size: 11in 8.5in; margin: 0.45in 0.5in 0.5in; }
+  body { font-family: Helvetica, Arial, sans-serif; color: ${BRAND.ink}; font-size: 9.5pt; margin: 0; }
+  .masthead { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 0 0 10px; border-bottom: 3px solid ${BRAND.gold}; margin: 0 0 16px; }
+  .masthead img { height: 58px; width: auto; }
+  .nowrap { white-space: nowrap; }
+  .masthead .contact { text-align: right; color: ${BRAND.muted}; font-size: 8.5pt; line-height: 1.5; }
+  .masthead .contact b { color: ${BRAND.teal}; font-size: 10pt; letter-spacing: .04em; text-transform: uppercase; }
+  h1 { font-size: 17pt; margin: 0 0 4px; color: ${BRAND.teal}; }
+  .sub { color: ${BRAND.muted}; margin: 0 0 14px; }
+  .summary { display: inline-block; background: ${BRAND.paleTeal}; border-left: 4px solid ${BRAND.teal}; padding: 8px 16px 8px 12px; margin: 0 0 16px; color: ${BRAND.muted}; }
+  .summary b { display: block; font-size: 18pt; color: ${BRAND.teal}; line-height: 1.1; }
   table { width: 100%; border-collapse: collapse; }
-  th { text-align: left; font-size: 8.5pt; text-transform: uppercase; letter-spacing: .03em; color: #555; border-bottom: 1.5px solid #1a1a1a; padding: 5px 6px; }
-  td { vertical-align: top; border-bottom: 1px solid #ddd; padding: 5px 6px; }
+  thead { display: table-header-group; }
+  th { text-align: left; font-size: 8pt; text-transform: uppercase; letter-spacing: .04em; color: #fff; background: ${BRAND.teal}; padding: 6px; }
+  td { vertical-align: top; border-bottom: 1px solid ${BRAND.rule}; padding: 5px 6px; }
+  tbody tr:nth-child(even) td { background: ${BRAND.tint}; }
   tr { page-break-inside: avoid; }
-  a { color: #0b57d0; text-decoration: none; }
-  .muted { color: #666; font-size: 8.5pt; }
+  a { color: ${BRAND.teal}; text-decoration: underline; text-decoration-color: ${BRAND.gold}; }
+  .muted { color: ${BRAND.muted}; font-size: 8.5pt; }
   .flag { color: #b3261e; font-size: 8pt; font-weight: bold; }
-  .notes { margin: 14px 0 0; color: #333; }
+  .notes { margin: 14px 0 0; color: ${BRAND.ink}; }
   .notes li { margin: 2px 0; }
-  .source { margin-top: 16px; color: #666; font-size: 8pt; }
+  .source { margin-top: 16px; padding-top: 8px; border-top: 1px solid ${BRAND.rule}; color: ${BRAND.muted}; font-size: 8pt; }
 </style></head><body>
+<div class="masthead"><img src="${BRAND.logo}" alt="${esc(BRAND.name)}"><div class="contact"><b>Contractor report</b><br>${esc(BRAND.site)} · ${esc(BRAND.email)}</div></div>
 <h1>${esc(title)}</h1>
-<p class="sub">${esc(fmtDate(window.from))} to ${esc(fmtDate(window.to))} · Prepared ${esc(generatedAt)} by Raeltek</p>
+<p class="sub">${esc(fmtDate(window.from))} to ${esc(fmtDate(window.to))} · Prepared ${esc(generatedAt)} by ${esc(BRAND.name)}</p>
 <div class="summary"><div><b>${rows.length}</b>matching contractor${rows.length === 1 ? '' : 's'}</div></div>
 ${rows.length ? `<table><thead><tr>${head.map((h) => `<th>${h}</th>`).join('')}</tr></thead><tbody>
 ${body}

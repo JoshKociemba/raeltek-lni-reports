@@ -16,7 +16,8 @@ const DEPS = {
   'inquiry.cjs': [],
   'understand.cjs': [],
   'lni.cjs': [],
-  'report.cjs': ['inquiry.cjs'],
+  'brand.cjs': [],
+  'report.cjs': ['inquiry.cjs', 'brand.cjs'],
 };
 
 /** Paste src files into a Code node, dropping require and module.exports lines that n8n can't run. */
