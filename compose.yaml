@@ -1,0 +1,15 @@
+name: raeltek-lni-reports
+# The workflow runs in the outreach n8n (raeltek-outreach, port 5680). This file only adds Gotenberg, which
+# turns the report's HTML into a PDF. n8n reaches it at http://host.docker.internal:3010.
+services:
+  gotenberg:
+    image: gotenberg/gotenberg:8
+    restart: unless-stopped
+    ports:
+      # Only this machine can reach it.
+      - "127.0.0.1:3010:3000"
+    command:
+      - gotenberg
+      # The report is self-contained; don't let Chromium fetch anything from the network.
+      - --chromium-deny-list=^(?!file:///tmp/).*
+      - --api-timeout=60s
