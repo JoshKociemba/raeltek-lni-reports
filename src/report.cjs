@@ -123,7 +123,7 @@ function buildClarification({ inquiry, question, signature }) {
   return {
     to: inquiry.sender.address,
     subject: reSubject(inquiry.subject),
-    body_html: htmlBody(greeting, [`I want to make sure I pull the right report. ${ask}`, 'I can report on contractors whose liability insurance or contractor registration expires within a number of days, by trade and city.'], signature),
+    body_html: htmlBody(greeting, [`I want to make sure I pull the right report. ${ask}`, 'I can report on contractors whose insurance on file with L&I or contractor registration expires within a number of days, by trade and city.'], signature),
   };
 }
 
