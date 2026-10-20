@@ -88,9 +88,10 @@ function generalWhere(query) {
 }
 
 /**
- * The first query for a request. With a trade, it starts from that trade's active contractors (cheap: insurance
- * has no specialty column, so starting from insurance would pull every construction policy). Without a trade,
- * insurance reports start from the policies ending or cancelled in the window, a few thousand rows statewide.
+ * The first query for a request. Insurance reports start from the policies ending or cancelled in the window
+ * (a few thousand rows statewide), filtered by license type when the trade is a whole license type. A trade
+ * defined by specialty codes starts from its active contractors instead, since insurance has no specialty
+ * column and starting there would pull every construction policy.
  * Registration reports always start from the General dataset.
  */
 function planQuery({ query, today, appToken }) {
@@ -103,9 +104,14 @@ function planQuery({ query, today, appToken }) {
     notes.push('L&I has insurance on file for very few electrical contractors and no elevator contractors, so they rarely appear in insurance reports.');
   }
   if (query.cities.length) notes.push('Cities are the mailing address L&I has on file, which may differ from where a contractor works.');
-  const start = query.report === 'insurance' && !query.filters.length ? 'insurance' : 'contractors';
+  // Insurance has a license type column but no specialty, so type-only trades (plumbing, electrical) can start there too.
+  const typeOnly = query.filters.every((f) => !f.codes && !f.like);
+  const start = query.report === 'insurance' && typeOnly ? 'insurance' : 'contractors';
+  const types = [...new Set(query.filters.map((f) => f.type))];
+  const insWhere = [`(${between(i.expires, w)} OR ${between(i.cancelled, w)})`, `${i.status} = ${quote(ACTIVE)}`,
+    types.length ? `${i.type} in (${list(types)})` : ''].filter(Boolean).join(' AND ');
   const first = start === 'insurance'
-    ? url('insurance', { $where: `(${between(i.expires, w)} OR ${between(i.cancelled, w)}) AND ${i.status} = ${quote(ACTIVE)}`, $limit: ROW_LIMIT, $order: i.license }, appToken)
+    ? url('insurance', { $where: insWhere, $limit: ROW_LIMIT, $order: i.license }, appToken)
     : url('general', { $where: [query.report === 'license' ? between(g.expires, w) : '', generalWhere(query)].filter(Boolean).join(' AND '), $limit: ROW_LIMIT, $order: g.license }, appToken);
   return { window: w, notes, start, urls: { first } };
 }
@@ -152,12 +158,15 @@ function coverageEnd(row) {
   return can && (!exp || can < exp) ? can : exp;
 }
 
-/** L&I sometimes lists the same policy twice; keep the most recently updated copy. */
+/**
+ * L&I sometimes lists the same policy twice; keep the most recently updated copy. A policy number with a
+ * different term (a renewal under the same number) is a separate policy, so the dates are part of the key.
+ */
 function dedupePolicies(rows) {
   const i = FIELDS.insurance;
   const best = new Map();
   for (const r of rows) {
-    const key = `${licenseOf(r, i)}|${String(r[i.policy] || '').trim().toUpperCase()}`;
+    const key = [licenseOf(r, i), String(r[i.policy] || '').trim().toUpperCase(), day(r[i.starts]), day(r[i.expires]), day(r[i.cancelled])].join('|');
     const prev = best.get(key);
     if (!prev || day(r[i.updated]) > day(prev[i.updated])) best.set(key, r);
   }
@@ -224,11 +233,13 @@ function buildRows({ query, window, start, firstRows, lookups = [] }) {
   let renewedCount = 0;
   let endedCount = 0;
   for (const [lic, ps] of policies) {
-    const inWindow = ps.filter((x) => x.end >= window.from && x.end <= window.to);
+    // Would the first query have found this contractor? (A policy expiring or cancelled in the window.)
+    const inside = (d) => d >= window.from && d <= window.to;
+    const touched = ps.some((x) => inside(day(x.p[i.expires])) || inside(day(x.p[i.cancelled])));
     const latest = ps.filter((x) => x.end).sort((a, b) => b.end.localeCompare(a.end))[0];
     if (!latest) continue;
-    if (latest.end > window.to) { if (inWindow.length) renewedCount++; continue; }
-    if (latest.end < window.from) { if (ps.some((x) => day(x.p[i.expires]) >= window.from && day(x.p[i.expires]) <= window.to)) endedCount++; continue; }
+    if (latest.end > window.to) { if (touched) renewedCount++; continue; }
+    if (latest.end < window.from) { if (touched) endedCount++; continue; }
     const p = latest.p;
     rows.push({
       ...contractorRow(contractors.get(lic)),
