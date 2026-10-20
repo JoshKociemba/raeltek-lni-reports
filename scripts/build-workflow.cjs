@@ -71,7 +71,7 @@ const today = "const today = $now.setZone('America/Los_Angeles').toISODate();";
 
 // ---- Nodes ----
 node('New inquiry email', 'n8n-nodes-base.gmailTrigger', 1.2, [0, 0], {
-  pollTimes: { item: [{ mode: 'everyX', value: 5, unit: 'minutes' }] },
+  pollTimes: { item: [{ mode: 'everyMinute' }] },
   simple: false,
   // Gmail search ignores the brackets; Check inquiries requires the exact [L&I Report] tag. Mail from Josh
   // himself is included (he's on the allow list), and his sent replies are skipped by their marker line.
@@ -135,7 +135,7 @@ code('Plan query', [6, 1], ['understand.cjs', 'lni.cjs'], `
 ${settings}
 ${today}
 const { inquiry } = $('Prepare').first().json;
-const u = parseUnderstanding({ ollama: $input.first().json, request: inquiry.request, defaultDays: Number(s.DEFAULT_DAYS) || 14, maxDays: Number(s.MAX_DAYS) || 90 });
+const u = parseUnderstanding({ ollama: $input.first().json, request: inquiry.request, defaultDays: Number(s.DEFAULT_DAYS) || 14, maxDays: Number(s.MAX_DAYS) || 90, maxRows: Number(s.MAX_ROWS) || 300 });
 if (u.error) throw new Error(u.error);
 if (!u.clear) return [{ json: { inquiry, clear: false, question: u.question } }];
 const plan = planQuery({ query: u.query, today, appToken: s.SOCRATA_APP_TOKEN });
@@ -179,8 +179,10 @@ const html = renderReportHtml({
   title: plan.title, query: plan.query, window: plan.window, rows, notes: plan.notes,
   stats: { renewedCount, endedCount, truncated }, generatedAt, maxRows: Number(s.MAX_ROWS) || 300,
 });
-return [{ json: { count: rows.length, html, ollama_request: replyRequest({
-  senderName: plan.inquiry.sender.name, title: plan.title, count: rows.length, model: s.OLLAMA_MODEL,
+// The email counts what the PDF lists, so a request for "5 painters" says 5, not every match.
+const count = listedCount(rows, plan.query, Number(s.MAX_ROWS) || 300);
+return [{ json: { count, html, ollama_request: replyRequest({
+  senderName: plan.inquiry.sender.name, title: plan.title, count, model: s.OLLAMA_MODEL,
 }) } }];
 `);
 

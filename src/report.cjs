@@ -15,6 +15,9 @@ const money = (s) => {
   return s && Number.isFinite(n) && n > 0 ? `$${n.toLocaleString('en-US', { maximumFractionDigits: 0 })}` : esc(s);
 };
 
+/** How many rows the report lists: a count the request asked for ("5 painters"), else everything up to maxRows. */
+const listedCount = (rows, query, maxRows = 300) => Math.min(rows.length, maxRows, query.limit || Infinity);
+
 /** File name for the PDF, e.g. "LI report 2026-10-20 plumbing insurance.pdf". */
 function reportFileName(query, today) {
   const what = [query.trades.join(' ') || 'all trades', query.report].join(' ').replace(/[^a-z0-9 -]/gi, '').trim();
@@ -22,7 +25,7 @@ function reportFileName(query, today) {
 }
 
 function renderReportHtml({ title, query, window, rows, notes = [], stats = {}, generatedAt, maxRows = 300 }) {
-  const shown = rows.slice(0, maxRows);
+  const shown = rows.slice(0, listedCount(rows, query, maxRows));
   const insurance = query.report === 'insurance';
   const head = insurance
     ? ['Coverage ends', 'Business', 'License / UBI', 'License type', 'Phone', 'Address', 'Insurer and policy']
@@ -40,7 +43,8 @@ function renderReportHtml({ title, query, window, rows, notes = [], stats = {}, 
     return `<tr>${cells.map((c) => `<td>${c}</td>`).join('')}</tr>`;
   }).join('\n');
   const allNotes = [...notes];
-  if (rows.length > shown.length) allNotes.push(`Showing the first ${shown.length} of ${rows.length} matches. Narrow the request (a city or a shorter window) for the rest.`);
+  if (query.limit && rows.length > shown.length) allNotes.push(`As asked, this lists the ${shown.length} whose coverage or registration ends soonest, of ${rows.length} matches.`);
+  else if (rows.length > shown.length) allNotes.push(`Showing the first ${shown.length} of ${rows.length} matches. Narrow the request (a city or a shorter window) for the rest.`);
   if (stats.truncated) allNotes.push('L&I returned the maximum number of rows for one query, so some matches may be missing. Narrow the request.');
   if (stats.endedCount) allNotes.push(`${stats.endedCount} contractor${stats.endedCount === 1 ? '' : 's'} whose policy would have expired in this window ${stats.endedCount === 1 ? 'was' : 'were'} left out because it was already cancelled earlier.`);
   if (stats.renewedCount) allNotes.push(`${stats.renewedCount} contractor${stats.renewedCount === 1 ? '' : 's'} with a policy ending in this window ${stats.renewedCount === 1 ? 'was' : 'were'} left out because another policy on file runs past it (renewed, or other coverage).`);
@@ -75,7 +79,7 @@ function renderReportHtml({ title, query, window, rows, notes = [], stats = {}, 
 <div class="masthead"><img src="${BRAND.logo}" alt="${esc(BRAND.name)}"><div class="contact"><b>Contractor report</b><br>${esc(BRAND.site)} · ${esc(BRAND.email)}</div></div>
 <h1>${esc(title)}</h1>
 <p class="sub">${esc(fmtDate(window.from))} to ${esc(fmtDate(window.to))} · Prepared ${esc(generatedAt)} by ${esc(BRAND.name)}</p>
-<div class="summary"><div><b>${rows.length}</b>matching contractor${rows.length === 1 ? '' : 's'}</div></div>
+<div class="summary"><div><b>${shown.length < rows.length && query.limit ? `${shown.length} of ${rows.length}` : rows.length}</b>matching contractor${rows.length === 1 ? '' : 's'}${shown.length < rows.length && query.limit ? ', soonest first' : ''}</div></div>
 ${rows.length ? `<table><thead><tr>${head.map((h) => `<th>${h}</th>`).join('')}</tr></thead><tbody>
 ${body}
 </tbody></table>` : '<p>No active contractors matched this request.</p>'}
@@ -138,4 +142,4 @@ function buildClarification({ inquiry, question, signature }) {
   };
 }
 
-module.exports = { esc, fmtDate, reportFileName, renderReportHtml, replyRequest, replyText, buildReply, buildClarification };
+module.exports = { esc, fmtDate, listedCount, reportFileName, renderReportHtml, replyRequest, replyText, buildReply, buildClarification };
