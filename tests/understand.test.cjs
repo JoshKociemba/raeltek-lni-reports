@@ -1,6 +1,6 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { ruleParse, parseUnderstanding, tradeFilters, describeQuery, understandRequest } = require('../src/understand.cjs');
+const { CLARIFY_QUESTION, threadText, ruleParse, parseUnderstanding, tradeFilters, describeQuery, understandRequest } = require('../src/understand.cjs');
 
 const reply = (o) => ({ message: { content: JSON.stringify({ understood: true, report: 'insurance', trades: [], days: 14, cities: [], counties: [], clarifying_question: '', ...o }) } });
 
@@ -32,10 +32,10 @@ test('the example request becomes a query', () => {
 test('days are clamped and bad answers ask for clarification', () => {
   assert.equal(parseUnderstanding({ ollama: reply({ days: 400 }), maxDays: 90 }).query.days, 90);
   assert.equal(parseUnderstanding({ ollama: reply({ days: 0 }) }).query.days, 14);
-  const unclear = parseUnderstanding({ ollama: reply({ understood: false, clarifying_question: 'Which trade?' }) });
-  assert.deepEqual(unclear, { clear: false, question: 'Which trade?' });
+  const unclear = parseUnderstanding({ ollama: reply({ understood: false, clarifying_question: 'Which trade?' }), request: 'hello' });
+  assert.deepEqual(unclear, { clear: false, question: CLARIFY_QUESTION });
   assert.equal(parseUnderstanding({ ollama: reply({ report: 'bond' }) }).clear, false);
-  assert.match(parseUnderstanding({ ollama: { error: 'connection refused' } }).error, /connection refused/);
+  assert.deepEqual(parseUnderstanding({ ollama: { error: 'connection refused' }, request: 'hello' }), { clear: false, question: CLARIFY_QUESTION });
 });
 
 test("Josh's first real request is understood even when the model asks a needless question", () => {
@@ -79,4 +79,34 @@ test('a count in the request caps the list, and units or links never count', () 
   const u = parseUnderstanding({ ollama: reply({}), request: 'list of 500 painters, insurance, 14 days', maxRows: 300 });
   assert.equal(u.query.limit, 300);
   assert.equal(describeQuery({ ...u.query, limit: 5 }), 'The 5 painting contractors whose insurance on file with L&I expires soonest in the next 14 days');
+});
+
+test('a trade or count with no report type means insurance, with a note', () => {
+  const u = parseUnderstanding({ ollama: reply({ understood: false }), request: 'Can you send me 4 plumbers?' });
+  assert.deepEqual([u.query.report, u.query.trades, u.query.limit, u.query.days], ['insurance', ['plumbing'], 4, 14]);
+  assert.match(u.notes[0], /named no report type/);
+});
+
+test("follow-ups in a thread reuse the last report's request", () => {
+  const painters = parseUnderstanding({ ollama: reply({ cities: ['Vancouver'] }), request: 'a list of 5 painters in Vancouver whose insurance expires in the next week or two' }).query;
+  const prior = { query: painters };
+  // Josh's real follow-up: only the trade and count change.
+  const plumbers = parseUnderstanding({ ollama: reply({ understood: false }), request: "Thanks for sending that over! Got the file, I'll take a look. Can you also send one that has 4 plumbers?", prior });
+  assert.deepEqual([plumbers.query.report, plumbers.query.trades, plumbers.query.limit, plumbers.query.days, plumbers.query.cities], ['insurance', ['plumbing'], 4, 14, ['VANCOUVER']]);
+  assert.deepEqual(plumbers.notes, []);
+  // A new trade with no count lists every match; a new window keeps the trade and count.
+  assert.equal(parseUnderstanding({ ollama: reply({}), request: 'and roofers?', prior }).query.limit, null);
+  const longer = parseUnderstanding({ ollama: reply({}), request: 'same but 30 days', prior }).query;
+  assert.deepEqual([longer.trades, longer.limit, longer.days], [['painting'], 5, 30]);
+  assert.equal(parseUnderstanding({ ollama: reply({}), request: 'now registrations', prior }).query.report, 'license');
+});
+
+test('an answer to our question completes the request that asked it', () => {
+  const asked = 'Can you also send one that has some plumbers? Thanks';
+  const prior = { request: threadText(asked, null) };
+  assert.equal(threadText('Expiring licenses', prior), `${asked}\nExpiring licenses`);
+  const u = parseUnderstanding({ ollama: reply({}), request: 'Expiring licenses', prior });
+  assert.deepEqual([u.query.report, u.query.trades], ['license', ['plumbing']]);
+  // After a report, a reply is read alone.
+  assert.equal(threadText('roofers', { query: {} }), 'roofers');
 });
