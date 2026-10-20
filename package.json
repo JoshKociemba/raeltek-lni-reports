@@ -1,0 +1,10 @@
+{
+  "name": "raeltek-lni-reports",
+  "private": true,
+  "scripts": {
+    "test": "node --test tests/*.test.cjs",
+    "build:workflow": "node scripts/build-workflow.cjs",
+    "check:fields": "node scripts/check-fields.cjs",
+    "try": "node scripts/try-report.cjs"
+  }
+}
