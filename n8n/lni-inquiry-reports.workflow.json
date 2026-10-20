@@ -7,7 +7,7 @@
           "item": [
             {
               "mode": "everyX",
-              "value": 5,
+              "value": 1,
               "unit": "minutes"
             }
           ]
