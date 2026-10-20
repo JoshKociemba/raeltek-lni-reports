@@ -1,6 +1,6 @@
 // Decide whether an incoming email is an L&I inquiry from someone on the allowed list, and pull out the request.
 
-const SUBJECT_TAG = '[L&I Inquiry]';
+const SUBJECT_TAG = '[L&I Report]';
 // Every reply the workflow drafts carries this line. When Josh sends a reply to himself it lands back in the
 // inbox with the tag in its subject, and this line is how we know not to answer our own reply.
 const REPLY_MARKER = 'Report prepared from Washington L&I open data.';

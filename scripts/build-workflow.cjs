@@ -73,9 +73,9 @@ const today = "const today = $now.setZone('America/Los_Angeles').toISODate();";
 node('New inquiry email', 'n8n-nodes-base.gmailTrigger', 1.2, [0, 0], {
   pollTimes: { item: [{ mode: 'everyX', value: 5, unit: 'minutes' }] },
   simple: false,
-  // Gmail search ignores the brackets; Check inquiries requires the exact [L&I Inquiry] tag. Mail from Josh
+  // Gmail search ignores the brackets; Check inquiries requires the exact [L&I Report] tag. Mail from Josh
   // himself is included (he's on the allow list), and his sent replies are skipped by their marker line.
-  filters: { q: 'subject:"L&I Inquiry" in:inbox' },
+  filters: { q: 'subject:"L&I Report" in:inbox' },
   options: {},
 });
 

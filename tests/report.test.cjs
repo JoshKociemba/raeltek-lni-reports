@@ -5,7 +5,7 @@ const { renderReportHtml, replyText, buildReply, buildClarification, reportFileN
 const query = { report: 'insurance', days: 14, trades: ['plumbing'], filters: [], cities: [], counties: [] };
 const window = { from: '2026-10-20', to: '2026-11-03' };
 const row = { license: 'AAA', name: 'A & B <Plumbing>', ubi: '603568919', phone: '3605550100', address: '1 Main St, VANCOUVER, WA 98682', specialties: 'PLUMBING', ends: '2026-10-25', insurer: 'Acme', policy: 'P1', amount: '1000000', verify: 'https://secure.lni.wa.gov/verify/Detail.aspx?UBI=603568919&LIC=AAA&SAW=' };
-const inquiry = { sender: { address: 'pat@example.com', name: 'Pat Smith' }, subject: '[L&I Inquiry] plumbers', threadId: 't1' };
+const inquiry = { sender: { address: 'pat@example.com', name: 'Pat Smith' }, subject: '[L&I Report] plumbers', threadId: 't1' };
 
 test('the report lists rows, escapes text and links to Verify', () => {
   const html = renderReportHtml({ title: 'Plumbing', query, window, rows: [row], generatedAt: 'Oct 20, 2026', stats: { renewedCount: 2 } });
@@ -36,7 +36,7 @@ test('reply text uses the model when it behaves, and a template otherwise', () =
 test('the reply goes back to the sender in the same thread subject', () => {
   const d = buildReply({ inquiry, title: 'Plumbing', count: 1, ollama: null, signature: 'Thanks,' });
   assert.equal(d.to, 'pat@example.com');
-  assert.equal(d.subject, 'Re: [L&I Inquiry] plumbers');
+  assert.equal(d.subject, 'Re: [L&I Report] plumbers');
   assert.match(d.body_html, /^<p>Hi Pat,<\/p>/);
   assert.match(d.body_html, /<p>Thanks,<\/p>/);
   assert.ok(!/Raeltek<\/p>/.test(d.body_html), 'no signature; Workspace adds it');

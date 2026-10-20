@@ -1,6 +1,6 @@
 # Raeltek L&I inquiry reports instructions
 
-This repository holds an n8n workflow that answers `[L&I Inquiry]` emails from an allowed list with a PDF report built from Washington L&I contractor open data. It is internal and private.
+This repository holds an n8n workflow that answers `[L&I Report]` emails from an allowed list with a PDF report built from Washington L&I contractor open data. It is internal and private.
 
 - `src/` is the master copy; run `npm test` and `npm run build:workflow` after changing it, and never edit Code nodes in the committed JSON by hand.
 - The report's logo and colors live in `src/brand.cjs`, generated from `assets/` by `npm run build:brand`. Follow the Raeltek brand guide (raeltek-website docs/RAELTEK-AI-BRAND-GUIDE.md): use the supplied logo unaltered and gold only for accents, never small text.

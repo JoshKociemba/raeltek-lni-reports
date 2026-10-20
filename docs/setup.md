@@ -33,7 +33,7 @@ Every drafted reply has the line "Report prepared from Washington L&I open data.
 4. Save and **activate** the workflow. Until it's active, the trigger only runs when you click **Execute workflow** (it then takes the most recent matching email).
 
 ## 4. Test
-From josh@raeltek.com, email yourself with subject `[L&I Inquiry] test` and a request in the body. Within five minutes a reply with the PDF should arrive in the same thread (or a draft, with `AUTO_SEND` off). Open the PDF and spot-check a few rows on the Verify links.
+From josh@raeltek.com, email yourself with subject `[L&I Report] test` and a request in the body. Within five minutes a reply with the PDF should arrive in the same thread (or a draft, with `AUTO_SEND` off). Open the PDF and spot-check a few rows on the Verify links.
 
 ## What it can and can't report
 - Liability insurance expiring (or cancelled) and contractor registration expiring, by trade, city and number of days. Only active registrations are listed.

@@ -1,6 +1,6 @@
 # Raeltek L&I inquiry reports
 
-An n8n workflow that answers report requests by email. Someone on the allowed list emails Josh with `[L&I Inquiry]` in the subject and a plain request, such as:
+An n8n workflow that answers report requests by email. Someone on the allowed list emails Josh with `[L&I Report]` in the subject and a plain request, such as:
 
 > Can you find plumbing companies whose insurance is going to expire in the next 14 days?
 
