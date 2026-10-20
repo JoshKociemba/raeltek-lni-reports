@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // Generate n8n/lni-inquiry-reports.workflow.json from src/. The Code nodes get the src/ functions pasted in, so
 // src/ stays the master copy: change src/, run `npm run build:workflow`, then re-import the workflow in n8n.
-// The workflow only creates Gmail drafts. It has no send node, and tests/workflow.test.cjs checks that.
+// The report goes back to the requester as a Gmail reply in their thread (Josh, 2026-10-20). Clarifying questions
+// stay Gmail drafts for Josh to check. tests/workflow.test.cjs checks there is no other way to send.
 // Usage: node scripts/build-workflow.cjs [--check]   (--check exits 1 if the committed file is out of date)
 const fs = require('node:fs');
 const path = require('node:path');
@@ -215,18 +216,20 @@ const plan = $('Plan query').first().json;
 const report = $('Build report').first().json;
 const draft = buildReply({ inquiry: plan.inquiry, title: plan.title, count: report.count, ollama: $('Write reply').first().json, signature: s.SIGN_OFF });
 const pdf = $input.first().binary.data;
-return [{ json: { draft, threadId: plan.inquiry.threadId }, binary: { data: { ...pdf, fileName: reportFileName(plan.query, today), mimeType: 'application/pdf' } } }];
+return [{ json: { draft, threadId: plan.inquiry.threadId, messageId: plan.inquiry.messageId }, binary: { data: { ...pdf, fileName: reportFileName(plan.query, today), mimeType: 'application/pdf' } } }];
 `);
 
-// Draft › Create only. There is deliberately no send node anywhere in this workflow.
-node('Draft report reply', 'n8n-nodes-base.gmail', 2.1, [17, 0], {
-  resource: 'draft',
-  subject: '={{ $json.draft.subject }}',
+// Reply to the inquiry message itself, to its sender only. n8n reads the recipient from that message's From header,
+// which Check inquiries has already matched to ALLOWED_SENDERS and DMARC, and node version 2.1 ignores Reply-To,
+// so a request can't redirect the report to someone else.
+node('Send report reply', 'n8n-nodes-base.gmail', 2.1, [17, 0], {
+  resource: 'message',
+  operation: 'reply',
+  messageId: '={{ $json.messageId }}',
   emailType: 'html',
   message: '={{ $json.draft.body_html }}',
   options: {
-    sendTo: '={{ $json.draft.to }}',
-    threadId: '={{ $json.threadId }}',
+    replyToSenderOnly: true,
     attachmentsUi: { attachmentsBinary: [{ property: 'data' }] },
   },
 });
@@ -255,8 +258,8 @@ const link = (from, to, output = 0) => {
 [['New inquiry email', 'Settings'], ['Settings', 'Check inquiries'], ['Check inquiries', 'Loop over inquiries'],
   ['Prepare', 'Understand request'], ['Understand request', 'Plan query'], ['Plan query', 'Understood?'],
   ['Fetch matches', 'Plan lookups'], ['Plan lookups', 'Fetch lookups'], ['Fetch lookups', 'Build report'], ['Build report', 'Write reply'],
-  ['Write reply', 'Report HTML'], ['Report HTML', 'HTML file'], ['HTML file', 'Make PDF'], ['Make PDF', 'Reply email'], ['Reply email', 'Draft report reply'],
-  ['Draft report reply', 'Loop over inquiries'], ['Clarification email', 'Draft clarification'],
+  ['Write reply', 'Report HTML'], ['Report HTML', 'HTML file'], ['HTML file', 'Make PDF'], ['Make PDF', 'Reply email'], ['Reply email', 'Send report reply'],
+  ['Send report reply', 'Loop over inquiries'], ['Clarification email', 'Draft clarification'],
   ['Draft clarification', 'Loop over inquiries']].forEach(([a, b]) => link(a, b));
 // Loop over inquiries: output 0 is "done", output 1 is the next inquiry.
 link('Loop over inquiries', 'Prepare', 1);

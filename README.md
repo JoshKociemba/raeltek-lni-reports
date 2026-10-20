@@ -11,7 +11,7 @@ The workflow then:
 3. Queries L&I's official contractor open data on data.wa.gov ([General](https://data.wa.gov/d/m8qx-ubtq) and [Insurance](https://data.wa.gov/d/ciwg-agsx)), refreshed each business day.
 4. Verifies each match: the registration must be active and in the trade and city asked for, and every policy L&I has on file for the contractor is checked. A contractor is listed when their longest-lasting policy ends in the window, so anyone who has already renewed is left out (and counted). A cancellation date counts as the coverage end. Duplicate policy rows are merged.
 5. Prints a PDF report with Gotenberg. Each license number links to its [L&I Verify](https://secure.lni.wa.gov/verify/) page for spot checks.
-6. Saves a **Gmail draft** replying in the same thread, with the PDF attached and a short note written by Ollama (with a fixed fallback). Josh reviews and sends it. Nothing sends automatically.
+6. Replies to the requester in the same thread, with the PDF attached and a short note written by Ollama (with a fixed fallback). The reply goes only to the sender of the inquiry, who has already passed the allowed-list and DMARC checks. Clarifying questions are saved as **Gmail drafts** for Josh to check and send.
 
 Setup is in [docs/setup.md](docs/setup.md). What's in L&I's data is in [docs/datasets.md](docs/datasets.md).
 

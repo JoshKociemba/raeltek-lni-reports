@@ -57,6 +57,11 @@ test("Josh's own sent mail counts as authenticated, but our own replies are skip
   const r = checkInquiry({ email: reply, allowList: 'josh@raeltek.com', mailbox: 'josh@raeltek.com' });
   assert.equal(r.ok, false);
   assert.match(r.reason, /own report replies/);
+  // The workflow's own sent report: n8n's reply keeps the original subject and sends HTML only.
+  const { buildReply } = require('../src/report.cjs');
+  const sent = buildReply({ inquiry: { sender: { address: 'josh@raeltek.com', name: 'Josh' }, subject: '[L&I Inquiry] plumbers' }, title: 'Plumbing', count: 3, ollama: null, signature: 'Thanks,' });
+  const echo = { ...own, subject: '[L&I Inquiry] plumbers', text: undefined, html: sent.body_html };
+  assert.match(checkInquiry({ email: echo, allowList: 'josh@raeltek.com', mailbox: 'josh@raeltek.com' }).reason, /own report replies/);
   const followUp = { ...own, subject: 'Re: [L&I Inquiry] plumbers', text: `Can you do roofers too?\n\nOn Mon, Oct 20, 2026 Josh wrote:\n> ${REPLY_MARKER}` };
   assert.equal(checkInquiry({ email: followUp, allowList: 'josh@raeltek.com', mailbox: 'josh@raeltek.com' }).ok, true);
 });

@@ -7,17 +7,25 @@ test('the committed workflow matches src/ (run npm run build:workflow)', () => {
   assert.equal(fs.readFileSync(OUT, 'utf8'), json);
 });
 
-test('the workflow can only create drafts', () => {
+test('the only email it sends is the report, as a reply to the inquiry sender', () => {
   const gmail = workflow.nodes.filter((n) => n.type === 'n8n-nodes-base.gmail');
-  assert.equal(gmail.length, 2);
-  for (const g of gmail) {
-    assert.equal(g.parameters.resource, 'draft');
-    assert.equal(g.parameters.operation, undefined, 'draft defaults to create');
-  }
-  const senders = workflow.nodes.filter((n) => /(gmail|emailSend|microsoftOutlook|sendGrid|mailgun|smtp)/i.test(n.type)
-    && n.type !== 'n8n-nodes-base.gmailTrigger' && n.parameters.resource !== 'draft');
-  assert.deepEqual(senders, []);
-  assert.ok(!/"operation":\s*"(send|reply)"/.test(json));
+  assert.deepEqual(gmail.map((g) => g.name).sort(), ['Draft clarification', 'Send report reply']);
+  const send = gmail.find((g) => g.name === 'Send report reply');
+  assert.equal(send.parameters.resource, 'message');
+  assert.equal(send.parameters.operation, 'reply');
+  assert.equal(send.parameters.messageId, '={{ $json.messageId }}');
+  assert.equal(send.parameters.options.replyToSenderOnly, true);
+  // 2.2 and later reply to a Reply-To header, which the sender controls; 2.1 replies to the checked From address.
+  assert.equal(send.typeVersion, 2.1);
+  assert.equal(workflow.connections['Reply email'].main[0][0].node, 'Send report reply');
+  // Clarifying questions are still drafts.
+  const clarify = gmail.find((g) => g.name === 'Draft clarification');
+  assert.equal(clarify.parameters.resource, 'draft');
+  assert.equal(clarify.parameters.operation, undefined, 'draft defaults to create');
+  const others = workflow.nodes.filter((n) => /(emailSend|microsoftOutlook|sendGrid|mailgun|smtp)/i.test(n.type));
+  assert.deepEqual(others, []);
+  assert.ok(!/"operation":\s*"send"/.test(json));
+  assert.equal((json.match(/"operation":\s*"reply"/g) || []).length, 1);
 });
 
 test('no credentials or tokens are committed, and only Josh is allowed by default', () => {
