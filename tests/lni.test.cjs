@@ -15,28 +15,34 @@ test('the window runs from today through today + days', () => {
   assert.deepEqual(windowFor('2026-12-25', 10), { from: '2026-12-25', to: '2027-01-04' });
 });
 
-test('plumbing means plumbing contractors plus construction contractors with the plumbing specialty', () => {
-  assert.equal(tradeWhere(TRADES.plumbing), "((contractorlicensetypecode = 'PC') OR (contractorlicensetypecode = 'CC' AND specialtycode1 in ('AD')))");
+test('trade filters pair a license type with its specialty codes', () => {
+  assert.equal(tradeWhere(TRADES.plumbing), "((contractorlicensetypecode = 'PC'))");
+  assert.equal(tradeWhere(TRADES.hvac), "((contractorlicensetypecode = 'CC' AND specialtycode1 in ('SM')) OR (contractorlicensetypecode = 'EC' AND specialtycode1 in ('6A', '6B')))");
   assert.equal(tradeWhere([]), '');
   assert.equal(tradeWhere([{ type: 'CC', like: 'SANDBLAST' }]), "((contractorlicensetypecode = 'CC' AND upper(specialtycode1desc) like '%SANDBLAST%'))");
 });
 
-test('insurance reports start from active policies ending or cancelled in the window', () => {
-  const p = planQuery({ query: q(), today: '2026-10-20' });
+test('insurance reports for a trade start from its active contractors', () => {
+  const p = planQuery({ query: q({ cities: ["O'BRIEN"] }), today: '2026-10-20' });
+  assert.equal(p.start, 'contractors');
   const u = dec(p.urls.first);
-  assert.match(u, /resource\/ciwg-agsx\.json\?\$where=/);
-  assert.match(u, /\(expirationdate between '2026-10-20T00:00:00' and '2026-11-03T23:59:59' OR canceldate between '2026-10-20T00:00:00' and '2026-11-03T23:59:59'\)/);
-  assert.match(u, /licensestatus = 'A'/);
-  assert.match(u, /contractorlicensetypecode in \('PC', 'CC'\)/);
-  assert.deepEqual(p.notes, []);
+  assert.match(u, /m8qx-ubtq\.json\?\$where=statuscode = 'A' AND \(\(contractorlicensetypecode = 'PC'\)\) AND upper\(city\) in \('O''BRIEN'\)/);
+  assert.ok(!/licenseexpirationdate/.test(u));
+  assert.equal(p.notes.length, 1, 'mailing-address note');
 });
 
-test('registration reports query the General dataset directly, with city and trade', () => {
-  const u = dec(planQuery({ query: q({ report: 'license', cities: ["O'BRIEN"] }), today: '2026-10-20' }).urls.first);
-  assert.match(u, /m8qx-ubtq\.json/);
-  assert.match(u, /licenseexpirationdate between/);
-  assert.match(u, /statuscode = 'A'/);
-  assert.match(u, /upper\(city\) in \('O''BRIEN'\)/);
+test('insurance reports for every trade start from policies ending or cancelled in the window', () => {
+  const p = planQuery({ query: q({ trades: [], filters: [] }), today: '2026-10-20' });
+  assert.equal(p.start, 'insurance');
+  const u = dec(p.urls.first);
+  assert.match(u, /ciwg-agsx\.json/);
+  assert.match(u, /\(expirationdate between '2026-10-20T00:00:00' and '2026-11-03T23:59:59' OR canceldate between '2026-10-20T00:00:00' and '2026-11-03T23:59:59'\) AND licensestatus = 'A'/);
+});
+
+test('registration reports filter the General dataset by expiry', () => {
+  const p = planQuery({ query: q({ report: 'license' }), today: '2026-10-20' });
+  assert.match(dec(p.urls.first), /m8qx-ubtq.*licenseexpirationdate between .* AND statuscode = 'A'/);
+  assert.deepEqual(planLookups({ query: q({ report: 'license' }), start: p.start, firstRows: [contractor('AAA')] }), []);
 });
 
 test('counties and electrical insurance get a note', () => {
@@ -51,26 +57,27 @@ test('parseRows surfaces Socrata errors', () => {
   assert.throws(() => parseRows('<html>', 'x'), /did not return JSON/);
 });
 
-test('lookups check trade, city and newer policies in chunks', () => {
-  const rows = Array.from({ length: 151 }, (_, k) => policy(`L${k}`, '2026-10-30'));
-  const l = planLookups({ query: q({ cities: ['VANCOUVER'] }), window: W, firstRows: [...rows, rows[0]] });
-  assert.deepEqual(l.map((x) => x.kind), ['contractors', 'newer', 'contractors', 'newer']);
-  assert.match(dec(l[0].url), /m8qx-ubtq.*contractorlicensenumber in \('L0', 'L1'.*statuscode = 'A' AND \(\(contractorlicensetypecode = 'PC'\).*upper\(city\) in \('VANCOUVER'\)/);
-  assert.match(dec(l[1].url), /ciwg-agsx.*expirationdate > '2026-11-03T23:59:59'/);
+test('lookups fetch every policy on file, in chunks, plus contractors when starting from insurance', () => {
+  const cs = Array.from({ length: 151 }, (_, k) => contractor(`L${k}`));
+  const l = planLookups({ query: q(), start: 'contractors', firstRows: cs });
+  assert.deepEqual(l.map((x) => x.kind), ['policies', 'policies']);
+  assert.match(dec(l[0].url), /ciwg-agsx.*\$where=contractorlicensenumber in \('L0', 'L1'/);
   assert.ok(l.every((x) => x.url.length < 8000));
-  assert.deepEqual(planLookups({ query: q(), window: W, firstRows: [] }).map((x) => x.kind), ['none']);
-  assert.deepEqual(planLookups({ query: q({ report: 'license' }), window: W, firstRows: rows }).map((x) => x.kind), ['none']);
+  const ps = cs.map((c) => policy(c.contractorlicensenumber, '2026-10-30'));
+  const l2 = planLookups({ query: q({ trades: [], filters: [], cities: ['VANCOUVER'] }), start: 'insurance', firstRows: [...ps, ps[0]] });
+  assert.deepEqual(l2.map((x) => x.kind), ['contractors', 'policies', 'contractors', 'policies']);
+  assert.match(dec(l2[0].url), /m8qx-ubtq.*contractorlicensenumber in \('L0'.*statuscode = 'A' AND upper\(city\) in \('VANCOUVER'\)/);
+  assert.deepEqual(planLookups({ query: q(), start: 'contractors', firstRows: [] }), []);
 });
 
-test('the report keeps active matches without newer coverage, soonest first', () => {
-  const firstRows = [policy('AAA', '2026-11-01'), policy('BBB', '2026-10-25'), policy('CCC', '2026-10-22'), policy('DDD', '2026-10-28')];
-  const lookups = [
-    // CCC is not in the trade or city asked for, so the lookup didn't return it.
-    { kind: 'contractors', rows: [contractor('AAA'), contractor('BBB'), contractor('DDD')] },
-    { kind: 'newer', rows: [policy('DDD', '2027-10-28', { insurancepolicyno: 'NEW' })] },
-  ];
-  const { rows, renewedCount } = buildRows({ query: q(), window: W, firstRows, lookups });
-  assert.equal(renewedCount, 1);
+const run = (firstRows, policies, o = {}) => buildRows({ query: q(), window: W, start: 'contractors', firstRows, lookups: [{ kind: 'policies', rows: policies }], ...o });
+
+test('the report lists contractors whose coverage on file ends in the window, soonest first', () => {
+  const { rows, renewedCount } = run(
+    [contractor('AAA'), contractor('BBB'), contractor('DDD'), contractor('EEE')],
+    [policy('AAA', '2026-11-01'), policy('BBB', '2026-10-25'), policy('DDD', '2026-10-28'), policy('DDD', '2027-10-28', { insurancepolicyno: 'NEW' }), policy('EEE', '2027-05-01'), policy('ZZZ', '2026-10-22')],
+  );
+  assert.equal(renewedCount, 1, 'DDD has a newer policy; EEE never had one ending');
   assert.deepEqual(rows.map((r) => [r.license, r.ends]), [['BBB', '2026-10-25'], ['AAA', '2026-11-01']]);
   assert.equal(rows[0].phone, '(503) 957-3452');
   assert.equal(rows[0].insurer, 'Ohio Security Ins Co');
@@ -79,16 +86,14 @@ test('the report keeps active matches without newer coverage, soonest first', ()
   assert.equal(rows[0].verify, 'https://secure.lni.wa.gov/verify/Detail.aspx?UBI=603320569&LIC=BBB&SAW=');
 });
 
-test('a cancellation ends coverage, and a cancelled newer policy is not a renewal', () => {
-  const cancelled = policy('AAA', '2027-06-01', { canceldate: '2026-10-28T00:00:00.000' });
-  assert.equal(coverageEnd(cancelled), '2026-10-28');
-  const { rows } = buildRows({
-    query: q(), window: W, firstRows: [cancelled],
-    lookups: [{ kind: 'contractors', rows: [contractor('AAA')] }, { kind: 'newer', rows: [cancelled] }],
-  });
-  assert.equal(rows.length, 1);
-  assert.equal(rows[0].ends, '2026-10-28');
-  assert.equal(rows[0].cancelled, true);
+test('a cancellation ends coverage; one before the window is counted, not listed', () => {
+  const soon = policy('AAA', '2027-06-01', { canceldate: '2026-10-28T00:00:00.000' });
+  assert.equal(coverageEnd(soon), '2026-10-28');
+  const r1 = run([contractor('AAA')], [soon]);
+  assert.equal(r1.rows[0].ends, '2026-10-28');
+  assert.equal(r1.rows[0].cancelled, true);
+  const r2 = run([contractor('BBB')], [policy('BBB', '2026-10-30', { canceldate: '2026-04-06T00:00:00.000' })]);
+  assert.deepEqual([r2.rows.length, r2.endedCount], [0, 1]);
 });
 
 test('duplicate policy rows collapse to the latest update', () => {
@@ -97,14 +102,20 @@ test('duplicate policy rows collapse to the latest update', () => {
   assert.deepEqual(dedupePolicies([a, b, policy('AAA', '2026-10-30', { insurancepolicyno: 'WC-1' })]).map((p) => p.expirationdate.slice(0, 10)), ['2026-10-31', '2026-10-30']);
 });
 
-test('several policies ending in the window report the one that lasts longest', () => {
-  const firstRows = [policy('AAA', '2026-10-22', { insurancepolicyno: 'GL' }), policy('AAA', '2026-11-02', { insurancepolicyno: 'UMB' })];
-  const { rows } = buildRows({ query: q(), window: W, firstRows, lookups: [{ kind: 'contractors', rows: [contractor('AAA')] }] });
-  assert.equal(rows.length, 1);
-  assert.equal(rows[0].policy, 'UMB');
+test('with several policies in the window, the longest-lasting one is shown', () => {
+  const { rows } = run([contractor('AAA')], [policy('AAA', '2026-10-22', { insurancepolicyno: 'GL' }), policy('AAA', '2026-11-02', { insurancepolicyno: 'UMB' })]);
+  assert.deepEqual(rows.map((r) => r.policy), ['UMB']);
+});
+
+test('starting from insurance, only active contractors in the city asked for are kept', () => {
+  const ps = [policy('AAA', '2026-10-30'), policy('CCC', '2026-10-30')];
+  const { rows } = buildRows({ query: q({ trades: [], filters: [] }), window: W, start: 'insurance', firstRows: ps, lookups: [
+    { kind: 'contractors', rows: [contractor('AAA')] }, { kind: 'policies', rows: ps },
+  ] });
+  assert.deepEqual(rows.map((r) => r.license), ['AAA']);
 });
 
 test('registration reports list active registrations by expiry', () => {
-  const { rows } = buildRows({ query: q({ report: 'license' }), window: W, firstRows: [contractor('AAA', { licenseexpirationdate: '2026-10-30T00:00:00.000' }), contractor('ZZZ', { statuscode: 'E' })] });
+  const { rows } = buildRows({ query: q({ report: 'license' }), window: W, start: 'contractors', firstRows: [contractor('AAA', { licenseexpirationdate: '2026-10-30T00:00:00.000' }), contractor('ZZZ', { statuscode: 'E' })] });
   assert.deepEqual(rows.map((r) => [r.license, r.ends]), [['AAA', '2026-10-30']]);
 });

@@ -5,7 +5,8 @@
 // LC elevator) and, optionally, specialty codes. Codes repeat across types (01 is GENERAL for CC but JOURNEY
 // LEVEL for PC), so a code always goes with its type. Codes are from docs/datasets.md.
 const TRADES = {
-  plumbing: [{ type: 'PC' }, { type: 'CC', codes: ['AD'] }],
+  // CC specialty AD (PLUMBING) is a legacy code with no active registrations, so plumbing is the PC license only.
+  plumbing: [{ type: 'PC' }],
   electrical: [{ type: 'EC' }],
   elevator: [{ type: 'LC' }],
   hvac: [{ type: 'CC', codes: ['SM'] }, { type: 'EC', codes: ['6A', '6B'] }],
@@ -154,7 +155,7 @@ function parseUnderstanding({ ollama, defaultDays = 14, maxDays = 90 }) {
 function describeQuery(q) {
   const who = q.trades.length ? `${q.trades.map((t) => t[0].toUpperCase() + t.slice(1)).join(', ')} contractors` : 'Contractors';
   const where = [...q.cities.map((c) => titleCase(c)), ...q.counties.map((c) => `${titleCase(c)} County`)];
-  const what = q.report === 'insurance' ? 'liability insurance expires' : 'contractor registration expires';
+  const what = q.report === 'insurance' ? 'insurance on file with L&I expires' : 'contractor registration expires';
   return `${who}${where.length ? ` in ${where.join(', ')}` : ''} whose ${what} in the next ${q.days} day${q.days === 1 ? '' : 's'}`;
 }
 

@@ -13,7 +13,7 @@ test('the Ollama request asks for structured JSON with thinking off', () => {
 });
 
 test('trades map to specialty search terms', () => {
-  assert.deepEqual(tradeFilters('plumbers'), { trade: 'plumbing', filters: [{ type: 'PC' }, { type: 'CC', codes: ['AD'] }] });
+  assert.deepEqual(tradeFilters('plumbers'), { trade: 'plumbing', filters: [{ type: 'PC' }] });
   assert.equal(tradeFilters('Plumbing companies').trade, 'plumbing');
   assert.deepEqual(tradeFilters('roofing contractors'), { trade: 'roofing', filters: [{ type: 'CC', codes: ['CD'] }] });
   assert.equal(tradeFilters('HVAC').trade, 'hvac');
@@ -25,8 +25,8 @@ test('trades map to specialty search terms', () => {
 test('the example request becomes a query', () => {
   const u = parseUnderstanding({ ollama: reply({ trades: ['plumbing'], cities: ['Vancouver, WA'], counties: ['Clark County'] }) });
   assert.equal(u.clear, true);
-  assert.deepEqual(u.query, { report: 'insurance', days: 14, trades: ['plumbing'], filters: [{ type: 'PC' }, { type: 'CC', codes: ['AD'] }], cities: ['VANCOUVER'], counties: ['CLARK'], daysCapped: false });
-  assert.equal(describeQuery(u.query), 'Plumbing contractors in Vancouver, Clark County whose liability insurance expires in the next 14 days');
+  assert.deepEqual(u.query, { report: 'insurance', days: 14, trades: ['plumbing'], filters: [{ type: 'PC' }], cities: ['VANCOUVER'], counties: ['CLARK'], daysCapped: false });
+  assert.equal(describeQuery(u.query), 'Plumbing contractors in Vancouver, Clark County whose insurance on file with L&I expires in the next 14 days');
 });
 
 test('days are clamped and bad answers ask for clarification', () => {

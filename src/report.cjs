@@ -40,7 +40,8 @@ function renderReportHtml({ title, query, window, rows, notes = [], stats = {}, 
   const allNotes = [...notes];
   if (rows.length > shown.length) allNotes.push(`Showing the first ${shown.length} of ${rows.length} matches. Narrow the request (a city or a shorter window) for the rest.`);
   if (stats.truncated) allNotes.push('L&I returned the maximum number of rows for one query, so some matches may be missing. Narrow the request.');
-  if (stats.renewedCount) allNotes.push(`${stats.renewedCount} contractor${stats.renewedCount === 1 ? '' : 's'} with a policy ending in this window ${stats.renewedCount === 1 ? 'was' : 'were'} left out because a newer policy is already on file.`);
+  if (stats.endedCount) allNotes.push(`${stats.endedCount} contractor${stats.endedCount === 1 ? '' : 's'} whose policy would have expired in this window ${stats.endedCount === 1 ? 'was' : 'were'} left out because it was already cancelled earlier.`);
+  if (stats.renewedCount) allNotes.push(`${stats.renewedCount} contractor${stats.renewedCount === 1 ? '' : 's'} with a policy ending in this window ${stats.renewedCount === 1 ? 'was' : 'were'} left out because another policy on file runs past it (renewed, or other coverage).`);
   if (query.daysCapped) allNotes.push(`The window was capped at ${query.days} days.`);
   return `<!doctype html>
 <html><head><meta charset="utf-8"><title>${esc(title)}</title>
@@ -69,7 +70,7 @@ ${rows.length ? `<table><thead><tr>${head.map((h) => `<th>${h}</th>`).join('')}<
 ${body}
 </tbody></table>` : '<p>No active contractors matched this request.</p>'}
 ${allNotes.length ? `<ul class="notes">${allNotes.map((n) => `<li>${esc(n)}</li>`).join('')}</ul>` : ''}
-<p class="source">Source: Washington State Department of Labor &amp; Industries contractor open data on data.wa.gov (General and Insurance datasets), refreshed each business day. Only active registrations are listed. Each license number links to the L&amp;I Verify page; check it before relying on a record.</p>
+<p class="source">Source: Washington State Department of Labor &amp; Industries contractor open data on data.wa.gov (General and Insurance datasets), refreshed each business day. Only active registrations are listed. When a contractor has several policies on file, the one that lasts longest is shown. Each license number links to the L&amp;I Verify page; check it before relying on a record.</p>
 </body></html>
 `;
 }

@@ -33,8 +33,8 @@ Send an email from an allowed address (not from josh@raeltek.com; the trigger sk
 
 ## What it can and can't report
 - Liability insurance expiring (or cancelled) and contractor registration expiring, by trade, city and number of days. Only active registrations are listed.
-- Trades map to L&I license types and specialty codes in `TRADES` in `src/understand.cjs`. "Plumbing" means plumbing contractor licenses plus construction contractors registered with the plumbing specialty. A trade not in the list is matched by name against construction specialties.
-- A contractor with a policy ending in the window is left out if another policy on file runs past it (they've renewed, or have other coverage). The report counts how many were left out.
+- Trades map to L&I license types and specialty codes in `TRADES` in `src/understand.cjs`. "Plumbing" means the plumbing contractor (PC) license; the old construction plumbing specialty (AD) has no active registrations. A trade not in the list is matched by name against construction specialties.
+- A contractor with a policy ending in the window is left out if another policy on file runs past it (they've renewed, or have other coverage). L&I's data doesn't say which policy is general liability, so any policy counts. The report counts how many were left out.
 - Bonds aren't supported yet (L&I stores bond expiry as text and keeps bond history). Requests for them get a clarification reply.
 - L&I's data has no county column, so a county in a request is noted in the report and not applied; ask by city instead.
 - L&I has insurance on file for very few electrical contractors and no elevator contractors, so those trades rarely appear in insurance reports. The report says so.

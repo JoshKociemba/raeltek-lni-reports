@@ -141,7 +141,10 @@ code('Plan lookups', [9, 0], ['lni.cjs'], `
 ${settings}
 const plan = $('Plan query').first().json;
 const firstRows = parseRows($input.first().json.body, 'L&I data');
-return planLookups({ query: plan.query, window: plan.window, firstRows, appToken: s.SOCRATA_APP_TOKEN }).map((l) => ({ json: l }));
+const lookups = planLookups({ query: plan.query, start: plan.start, firstRows, appToken: s.SOCRATA_APP_TOKEN });
+// A node with no input items doesn't run, so with nothing to look up send one request that returns no rows.
+if (!lookups.length) lookups.push({ kind: 'none', url: url('insurance', { $where: "contractorlicensenumber = 'NONE'", $limit: 1 }, s.SOCRATA_APP_TOKEN) });
+return lookups.map((l) => ({ json: l }));
 `);
 
 // One request per chunk of license numbers; one second apart to stay polite to data.wa.gov without a token.
@@ -161,11 +164,11 @@ const firstRows = parseRows($('Fetch matches').first().json.body, 'L&I data');
 // Fetch lookups returns one item per Plan lookups item, in the same order.
 const kinds = $('Plan lookups').all().map((i) => i.json.kind);
 const lookups = $input.all().map((i, k) => ({ kind: kinds[k], rows: parseRows(i.json.body, 'L&I lookup') }));
-const { rows, renewedCount, truncated } = buildRows({ query: plan.query, window: plan.window, firstRows, lookups });
+const { rows, renewedCount, endedCount, truncated } = buildRows({ query: plan.query, window: plan.window, start: plan.start, firstRows, lookups });
 const generatedAt = $now.setZone('America/Los_Angeles').toFormat('LLL d, yyyy h:mm a');
 const html = renderReportHtml({
   title: plan.title, query: plan.query, window: plan.window, rows, notes: plan.notes,
-  stats: { renewedCount, truncated }, generatedAt, maxRows: Number(s.MAX_ROWS) || 300,
+  stats: { renewedCount, endedCount, truncated }, generatedAt, maxRows: Number(s.MAX_ROWS) || 300,
 });
 return [{ json: { count: rows.length, html, ollama_request: replyRequest({
   senderName: plan.inquiry.sender.name, title: plan.title, count: rows.length, model: s.OLLAMA_MODEL,

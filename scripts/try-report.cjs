@@ -28,18 +28,18 @@ async function main() {
   const firstRows = await get(plan.urls.first);
   console.log(`First query: ${firstRows.length} rows`);
   const lookups = [];
-  for (const l of planLookups({ query, window: plan.window, firstRows })) {
+  for (const l of planLookups({ query, start: plan.start, firstRows })) {
     lookups.push({ kind: l.kind, rows: await get(l.url) });
     await new Promise((r) => setTimeout(r, 300));
   }
-  console.log(`Lookups: ${lookups.map((l) => `${l.kind} ${l.rows.length}`).join(', ')}`);
-  const { rows, renewedCount, truncated } = buildRows({ query, window: plan.window, firstRows, lookups });
-  console.log(`Report rows: ${rows.length}, left out as renewed: ${renewedCount}${truncated ? ', TRUNCATED' : ''}`);
+  console.log(`Lookups: ${lookups.map((l) => `${l.kind} ${l.rows.length}`).join(', ') || 'none'}`);
+  const { rows, renewedCount, endedCount, truncated } = buildRows({ query, window: plan.window, start: plan.start, firstRows, lookups });
+  console.log(`Report rows: ${rows.length}, left out as renewed: ${renewedCount}, already cancelled: ${endedCount}${truncated ? ', TRUNCATED' : ''}`);
   for (const r of rows.slice(0, 10)) console.log(`  ${r.ends}  ${r.name}  ${r.license}  ${r.city}  ${r.insurer || ''}`);
-  const out = opt('out', 'report.html');
+  const out = opt('out', 'report.html'); // gitignored
   fs.writeFileSync(out, renderReportHtml({
     title: describeQuery(query), query, window: plan.window, rows, notes: plan.notes,
-    stats: { renewedCount, truncated }, generatedAt: new Date().toLocaleString('en-US', { timeZone: 'America/Los_Angeles' }),
+    stats: { renewedCount, endedCount, truncated }, generatedAt: new Date().toLocaleString('en-US', { timeZone: 'America/Los_Angeles' }),
   }));
   console.log(`Wrote ${out}`);
 }
