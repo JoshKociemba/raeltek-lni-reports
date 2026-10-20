@@ -94,7 +94,7 @@ const firstName = (name) => String(name || '').trim().split(/\s+/)[0].replace(/[
 
 function htmlBody(greeting, paragraphs, signature) {
   const p = (t) => `<p>${esc(t).replace(/\n/g, '<br>')}</p>`;
-  return [p(greeting), ...paragraphs.map(p), p(signature), `<p style="color:#888;font-size:12px">${esc(REPLY_MARKER)}</p>`].join('\n');
+  return [p(greeting), ...paragraphs.map(p), ...(String(signature || '').trim() ? [p(signature)] : []), `<p style="color:#888;font-size:12px">${esc(REPLY_MARKER)}</p>`].join('\n');
 }
 
 /** Check the model's text and fall back to a plain template if it's missing, too long or has placeholders. */

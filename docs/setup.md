@@ -24,7 +24,7 @@ Every line should say `ok`. If one says `MISSING`, fix the name in `FIELDS` in `
    - `DEFAULT_DAYS` (14) when a request gives no window, `MAX_DAYS` (90) the longest allowed.
    - `MAX_ROWS` (300) rows printed in one PDF.
    - `SOCRATA_APP_TOKEN` optional; a free token from data.wa.gov stops throttling if usage grows.
-   - `SIGNATURE` the sign-off on replies.
+   - `SIGN_OFF` the line before your name (default `Thanks,`). Don't put a signature here: Raeltek's Workspace adds your signature when the email is sent.
    - `REQUIRE_DMARC_PASS` keep on. It's what stops someone faking an allowed sender's address. Mail you send yourself counts as authenticated (Gmail marks it Sent, which only your account can do).
    - `MAILBOX` the Gmail account the trigger reads.
 

@@ -94,7 +94,8 @@ node('Settings', 'n8n-nodes-base.set', 3.4, [1, 0], {
       ['MAX_ROWS', 'number', 300],
       // Optional free Socrata app token (data.wa.gov › Developer settings) to avoid throttling.
       ['SOCRATA_APP_TOKEN', 'string', ''],
-      ['SIGNATURE', 'string', 'Josh\nRaeltek'],
+      // Just the sign-off. Raeltek's Workspace adds Josh's full signature when the email is sent, so don't add one here.
+      ['SIGN_OFF', 'string', 'Thanks,'],
       // Ollama and Gotenberg on the host machine, seen from inside the n8n container.
       ['OLLAMA_URL', 'string', 'http://host.docker.internal:11434'],
       ['OLLAMA_MODEL', 'string', 'qwen3:4b'],
@@ -212,7 +213,7 @@ ${settings}
 ${today}
 const plan = $('Plan query').first().json;
 const report = $('Build report').first().json;
-const draft = buildReply({ inquiry: plan.inquiry, title: plan.title, count: report.count, ollama: $('Write reply').first().json, signature: s.SIGNATURE });
+const draft = buildReply({ inquiry: plan.inquiry, title: plan.title, count: report.count, ollama: $('Write reply').first().json, signature: s.SIGN_OFF });
 const pdf = $input.first().binary.data;
 return [{ json: { draft, threadId: plan.inquiry.threadId }, binary: { data: { ...pdf, fileName: reportFileName(plan.query, today), mimeType: 'application/pdf' } } }];
 `);
@@ -233,7 +234,7 @@ node('Draft report reply', 'n8n-nodes-base.gmail', 2.1, [17, 0], {
 code('Clarification email', [8, 2], ['report.cjs'], `
 ${settings}
 const plan = $input.first().json;
-return [{ json: { draft: buildClarification({ inquiry: plan.inquiry, question: plan.question, signature: s.SIGNATURE }), threadId: plan.inquiry.threadId } }];
+return [{ json: { draft: buildClarification({ inquiry: plan.inquiry, question: plan.question, signature: s.SIGN_OFF }), threadId: plan.inquiry.threadId } }];
 `);
 
 node('Draft clarification', 'n8n-nodes-base.gmail', 2.1, [9, 2], {

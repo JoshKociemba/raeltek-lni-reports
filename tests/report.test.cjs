@@ -32,13 +32,15 @@ test('reply text uses the model when it behaves, and a template otherwise', () =
 });
 
 test('the reply goes back to the sender in the same thread subject', () => {
-  const d = buildReply({ inquiry, title: 'Plumbing', count: 1, ollama: null, signature: 'Josh\nRaeltek' });
+  const d = buildReply({ inquiry, title: 'Plumbing', count: 1, ollama: null, signature: 'Thanks,' });
   assert.equal(d.to, 'pat@example.com');
   assert.equal(d.subject, 'Re: [L&I Inquiry] plumbers');
   assert.match(d.body_html, /^<p>Hi Pat,<\/p>/);
-  assert.match(d.body_html, /Josh<br>Raeltek/);
+  assert.match(d.body_html, /<p>Thanks,<\/p>/);
+  assert.ok(!/Raeltek<\/p>/.test(d.body_html), 'no signature; Workspace adds it');
   assert.match(d.body_html, /Report prepared from Washington L&amp;I open data\./);
-  const c = buildClarification({ inquiry, question: 'Which trade?', signature: 'Josh' });
+  const c = buildClarification({ inquiry, question: 'Which trade?', signature: '' });
+  assert.ok(!/<p><\/p>/.test(c.body_html));
   assert.match(c.body_html, /Which trade\?/);
 });
 
