@@ -135,7 +135,7 @@ code('Plan query', [6, 1], ['understand.cjs', 'lni.cjs'], `
 ${settings}
 ${today}
 const { inquiry } = $('Prepare').first().json;
-const u = parseUnderstanding({ ollama: $input.first().json, request: inquiry.request, defaultDays: Number(s.DEFAULT_DAYS) || 14, maxDays: Number(s.MAX_DAYS) || 90 });
+const u = parseUnderstanding({ ollama: $input.first().json, request: inquiry.request, defaultDays: Number(s.DEFAULT_DAYS) || 14, maxDays: Number(s.MAX_DAYS) || 90, maxRows: Number(s.MAX_ROWS) || 300 });
 if (u.error) throw new Error(u.error);
 if (!u.clear) return [{ json: { inquiry, clear: false, question: u.question } }];
 const plan = planQuery({ query: u.query, today, appToken: s.SOCRATA_APP_TOKEN });
@@ -179,8 +179,10 @@ const html = renderReportHtml({
   title: plan.title, query: plan.query, window: plan.window, rows, notes: plan.notes,
   stats: { renewedCount, endedCount, truncated }, generatedAt, maxRows: Number(s.MAX_ROWS) || 300,
 });
-return [{ json: { count: rows.length, html, ollama_request: replyRequest({
-  senderName: plan.inquiry.sender.name, title: plan.title, count: rows.length, model: s.OLLAMA_MODEL,
+// The email counts what the PDF lists, so a request for "5 painters" says 5, not every match.
+const count = listedCount(rows, plan.query, Number(s.MAX_ROWS) || 300);
+return [{ json: { count, html, ollama_request: replyRequest({
+  senderName: plan.inquiry.sender.name, title: plan.title, count, model: s.OLLAMA_MODEL,
 }) } }];
 `);
 

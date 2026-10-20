@@ -25,7 +25,7 @@ test('trades map to specialty search terms', () => {
 test('the example request becomes a query', () => {
   const u = parseUnderstanding({ ollama: reply({ trades: ['plumbing'], cities: ['Vancouver, WA'], counties: ['Clark County'] }) });
   assert.equal(u.clear, true);
-  assert.deepEqual(u.query, { report: 'insurance', days: 14, trades: ['plumbing'], filters: [{ type: 'PC' }], cities: ['VANCOUVER'], counties: ['CLARK'], daysCapped: false });
+  assert.deepEqual(u.query, { report: 'insurance', days: 14, trades: ['plumbing'], filters: [{ type: 'PC' }], cities: ['VANCOUVER'], counties: ['CLARK'], daysCapped: false, limit: null });
   assert.equal(describeQuery(u.query), 'Plumbing contractors in Vancouver, Clark County whose insurance on file with L&I expires in the next 14 days');
 });
 
@@ -49,11 +49,11 @@ test("Josh's first real request is understood even when the model asks a needles
 });
 
 test('wording rules read report type, window and trades', () => {
-  assert.deepEqual(ruleParse('roofers and electricians whose license expires in the next two weeks'), { report: 'license', days: 14, trades: ['electrical', 'roofing'] });
-  assert.deepEqual(ruleParse('general contractors with coverage lapsing this month'), { report: 'insurance', days: 30, trades: ['general contractor'] });
-  assert.deepEqual(ruleParse('HVAC companies, insurance, 3 weeks'), { report: 'insurance', days: 21, trades: ['hvac'] });
+  assert.deepEqual(ruleParse('roofers and electricians whose license expires in the next two weeks'), { report: 'license', days: 14, trades: ['electrical', 'roofing'], limit: null });
+  assert.deepEqual(ruleParse('general contractors with coverage lapsing this month'), { report: 'insurance', days: 30, trades: ['general contractor'], limit: null });
+  assert.deepEqual(ruleParse('HVAC companies, insurance, 3 weeks'), { report: 'insurance', days: 21, trades: ['hvac'], limit: null });
   assert.equal(ruleParse('bonds expiring soon').report, 'bond');
-  assert.deepEqual(ruleParse('hello there'), { report: null, days: null, trades: [] });
+  assert.deepEqual(ruleParse('hello there'), { report: null, days: null, trades: [], limit: null });
 });
 
 test('the model still supplies cities, and wording wins on days and trades', () => {
@@ -65,4 +65,18 @@ test('a bond request gets a fixed clarifying reply', () => {
   const u = parseUnderstanding({ ollama: reply({}), request: 'plumbers whose bond expires in 14 days' });
   assert.equal(u.clear, false);
   assert.match(u.question, /Bond reports aren't available/);
+});
+
+test('a count in the request caps the list, and units or links never count', () => {
+  const josh = ruleParse('Can you help me find a list of 5 painters whose insurance is going to expire in the next week or two?');
+  assert.deepEqual(josh, { report: 'insurance', days: 14, trades: ['painting'], limit: 5 });
+  assert.equal(ruleParse('top 10 roofing companies, insurance, 3 weeks').limit, 10);
+  assert.equal(ruleParse('ten electricians whose license expires this month').limit, 10);
+  assert.equal(ruleParse('5 local painting companies, insurance, 14 days').limit, 5);
+  assert.equal(ruleParse('insurance in the next 14 days for contractors in Vancouver').limit, null);
+  assert.equal(ruleParse('plumbers insurance expiring in the first 14 days').limit, null);
+  assert.equal(ruleParse('Within 30 days, which plumbing contractors have insurance expiring').limit, null);
+  const u = parseUnderstanding({ ollama: reply({}), request: 'list of 500 painters, insurance, 14 days', maxRows: 300 });
+  assert.equal(u.query.limit, 300);
+  assert.equal(describeQuery({ ...u.query, limit: 5 }), 'The 5 painting contractors whose insurance on file with L&I expires soonest in the next 14 days');
 });

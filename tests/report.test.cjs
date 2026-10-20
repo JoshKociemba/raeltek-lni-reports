@@ -1,6 +1,6 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { renderReportHtml, replyText, buildReply, buildClarification, reportFileName, fmtDate } = require('../src/report.cjs');
+const { renderReportHtml, listedCount, replyText, buildReply, buildClarification, reportFileName, fmtDate } = require('../src/report.cjs');
 
 const query = { report: 'insurance', days: 14, trades: ['plumbing'], filters: [], cities: [], counties: [] };
 const window = { from: '2026-10-20', to: '2026-11-03' };
@@ -49,4 +49,16 @@ test('the reply goes back to the sender in the same thread subject', () => {
 test('file names and dates are readable', () => {
   assert.equal(reportFileName(query, '2026-10-20'), 'LI report 2026-10-20 plumbing insurance.pdf');
   assert.equal(fmtDate('2026-11-03'), 'Nov 3, 2026');
+});
+
+test('a requested count lists only the soonest rows and says so', () => {
+  const rows = ['2026-10-30', '2026-10-21', '2026-10-25'].map((ends, i) => ({ ...row, license: `L${i}`, ends }))
+    .sort((a, b) => a.ends.localeCompare(b.ends));
+  const html = renderReportHtml({ title: 't', query: { ...query, limit: 2 }, window, rows, generatedAt: '' });
+  assert.equal((html.match(/<tr><td>/g) || []).length, 2);
+  assert.match(html, /<b>2 of 3<\/b>matching contractors, soonest first/);
+  assert.match(html, /As asked, this lists the 2 whose coverage or registration ends soonest, of 3 matches/);
+  assert.doesNotMatch(html, /Oct 30, 2026/);
+  assert.equal(listedCount(rows, { limit: 2 }), 2);
+  assert.equal(listedCount(rows, { limit: null }), 3);
 });

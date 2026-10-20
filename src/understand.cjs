@@ -133,13 +133,14 @@ const NUMBER_WORDS = { a: 1, an: 1, one: 1, two: 2, three: 3, four: 4, five: 5, 
  */
 function ruleParse(request) {
   const t = ` ${String(request || '').toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ')} `;
-  const out = { report: null, days: null, trades: [] };
+  const out = { report: null, days: null, trades: [], limit: null };
   if (/ bond/.test(t)) out.report = 'bond';
   else if (/ (insur|coverage|liabilit|policy|policies )/.test(t)) out.report = 'insurance';
   else if (/ (licen[cs]|registration|registered|registrations )/.test(t)) out.report = 'license';
   const m = t.match(/ (\d+|[a-z]+) (day|days|week|weeks|month|months) /);
   const n = m && (/^\d+$/.test(m[1]) ? Number(m[1]) : NUMBER_WORDS[m[1]]);
-  if (n) out.days = n * (m[2].startsWith('week') ? 7 : m[2].startsWith('month') ? 30 : 1);
+  if (/ week or (two|2) | couple (of )?weeks /.test(t)) out.days = 14;
+  else if (n) out.days = n * (m[2].startsWith('week') ? 7 : m[2].startsWith('month') ? 30 : 1);
   else if (/ (this|next|the coming) month /.test(t)) out.days = 30;
   else if (/ (this|next) week /.test(t)) out.days = 7;
   // Longest names first, so "general contractor" wins over "general".
@@ -152,6 +153,15 @@ function ruleParse(request) {
       rest = rest.split(` ${name} `).join(' ').split(` ${name}s `).join(' ');
     }
   }
+  // "5 painters", "a list of 10 roofing companies", "top 3": a count right before who they want caps the list.
+  // Words between the count and the noun are adjectives ("5 local painting companies"), never units or links.
+  const filler = '(?:days?|weeks?|months?|years?|for|in|with|of|whose|that|who|and|or|to|from|by|at|on) ';
+  const nouns = [...names, 'contractor', 'compan', 'business', 'result', 'name', 'firm', 'licensee']
+    .map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+  const c = t.match(new RegExp(` (?:top |first )?(\\d+|${Object.keys(NUMBER_WORDS).filter((w) => !['a', 'an'].includes(w)).join('|')}) (?:(?!${filler})[a-z]+ ){0,2}?(?:${nouns})`))
+    || t.match(/ (?:top|first) (\d+|[a-z]+) (?!days? |weeks? |months? )/);
+  const count = c && (/^\d+$/.test(c[1]) ? Number(c[1]) : NUMBER_WORDS[c[1]]);
+  if (count > 0) out.limit = count;
   return out;
 }
 
@@ -160,7 +170,7 @@ function ruleParse(request) {
  * for a clarifying reply. When the rules settle the report type, the model can't turn it into a question, and a
  * model that's down or returns nonsense only costs the cities.
  */
-function parseUnderstanding({ ollama, request = '', defaultDays = 14, maxDays = 90 }) {
+function parseUnderstanding({ ollama, request = '', defaultDays = 14, maxDays = 90, maxRows = 300 }) {
   const rules = ruleParse(request);
   if (rules.report === 'bond') {
     return { clear: false, question: "Bond reports aren't available yet. Would an insurance or contractor registration report help instead?" };
@@ -194,6 +204,7 @@ function parseUnderstanding({ ollama, request = '', defaultDays = 14, maxDays = 
       cities: list(a.cities),
       counties: list(a.counties),
       daysCapped: askedDays > maxDays,
+      limit: rules.limit ? Math.min(rules.limit, maxRows) : null,
     },
   };
 }
@@ -203,7 +214,8 @@ function describeQuery(q) {
   const who = q.trades.length ? `${q.trades.map((t) => t[0].toUpperCase() + t.slice(1)).join(', ')} contractors` : 'Contractors';
   const where = [...q.cities.map((c) => titleCase(c)), ...q.counties.map((c) => `${titleCase(c)} County`)];
   const what = q.report === 'insurance' ? 'insurance on file with L&I expires' : 'contractor registration expires';
-  return `${who}${where.length ? ` in ${where.join(', ')}` : ''} whose ${what} in the next ${q.days} day${q.days === 1 ? '' : 's'}`;
+  const lead = q.limit ? `The ${q.limit} ${who.charAt(0).toLowerCase()}${who.slice(1)}` : who;
+  return `${lead}${where.length ? ` in ${where.join(', ')}` : ''} whose ${what}${q.limit ? ' soonest' : ''} in the next ${q.days} day${q.days === 1 ? '' : 's'}`;
 }
 
 const titleCase = (s) => String(s).toLowerCase().replace(/\b[a-z]/g, (c) => c.toUpperCase());
