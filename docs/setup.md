@@ -19,12 +19,13 @@ Every line should say `ok`. If one says `MISSING`, fix the name in `FIELDS` in `
 
 ## 3. Import
 1. In n8n: **Workflows › Import from file**, choose `n8n/lni-inquiry-reports.workflow.json`.
-2. Pick the Gmail credential (`Gmail account`) on **New inquiry email**, **Draft report reply** and **Draft clarification**.
+2. Pick the Gmail credential (`Gmail account`) on **New inquiry email**, **Send report reply**, **Draft report reply**, **Send clarification** and **Draft clarification**.
 3. Open **Settings**. `ALLOWED_SENDERS` starts as just `josh@raeltek.com`; add one address per line, or `@domain.com` for a whole domain. Leave the rest unless you need to change them:
    - `DEFAULT_DAYS` (14) when a request gives no window, `MAX_DAYS` (90) the longest allowed.
    - `MAX_ROWS` (300) rows printed in one PDF.
    - `SOCRATA_APP_TOKEN` optional; a free token from data.wa.gov stops throttling if usage grows.
    - `SIGN_OFF` the line before your name (default `Thanks,`). Don't put a signature here: Raeltek's Workspace adds your signature when the email is sent.
+   - `AUTO_SEND` on (default) sends each reply to the requester straight away; off saves it as a Gmail draft in the thread for you to review and send.
    - `REQUIRE_DMARC_PASS` keep on. It's what stops someone faking an allowed sender's address. Mail you send yourself counts as authenticated (Gmail marks it Sent, which only your account can do).
    - `MAILBOX` the Gmail account the trigger reads.
 
@@ -32,7 +33,7 @@ Every drafted reply has the line "Report prepared from Washington L&I open data.
 4. Save and **activate** the workflow. Until it's active, the trigger only runs when you click **Execute workflow** (it then takes the most recent matching email).
 
 ## 4. Test
-From josh@raeltek.com, email yourself with subject `[L&I Inquiry] test` and a request in the body. Within five minutes a draft reply with the PDF should appear in Gmail's Drafts, in the same thread. Open the PDF and spot-check a few rows on the Verify links before sending.
+From josh@raeltek.com, email yourself with subject `[L&I Inquiry] test` and a request in the body. Within five minutes a reply with the PDF should arrive in the same thread (or a draft, with `AUTO_SEND` off). Open the PDF and spot-check a few rows on the Verify links.
 
 ## What it can and can't report
 - Liability insurance expiring (or cancelled) and contractor registration expiring, by trade, city and number of days. Only active registrations are listed.
