@@ -130,7 +130,7 @@ code('Plan query', [6, 1], ['understand.cjs', 'lni.cjs'], `
 ${settings}
 ${today}
 const { inquiry } = $('Prepare').first().json;
-const u = parseUnderstanding({ ollama: $input.first().json, defaultDays: Number(s.DEFAULT_DAYS) || 14, maxDays: Number(s.MAX_DAYS) || 90 });
+const u = parseUnderstanding({ ollama: $input.first().json, request: inquiry.request, defaultDays: Number(s.DEFAULT_DAYS) || 14, maxDays: Number(s.MAX_DAYS) || 90 });
 if (u.error) throw new Error(u.error);
 if (!u.clear) return [{ json: { inquiry, clear: false, question: u.question } }];
 const plan = planQuery({ query: u.query, today, appToken: s.SOCRATA_APP_TOKEN });
