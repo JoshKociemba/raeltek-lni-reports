@@ -1,37 +1,48 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { planQuery, parseRows, matchCandidates, buildRows, windowFor, coverageEnd } = require('../src/lni.cjs');
+const { planQuery, parseRows, planLookups, buildRows, windowFor, coverageEnd, dedupePolicies, tradeWhere } = require('../src/lni.cjs');
+const { TRADES } = require('../src/understand.cjs');
 
-const q = (o = {}) => ({ report: 'insurance', days: 14, trades: ['plumbing'], terms: ['PLUMB'], cities: [], counties: [], ...o });
-const contractor = (lic, o = {}) => ({ contractorlicensenumber: lic, businessname: `${lic} Plumbing LLC`, ubi: '603 568 919', contractorlicensestatus: 'ACTIVE', city: 'VANCOUVER', state: 'WA', zip: '98682', specialtycode1desc: 'PLUMBING', licenseexpirationdate: '2027-03-01T00:00:00.000', ...o });
-const policy = (lic, exp, o = {}) => ({ contractorlicensenumber: lic, insurancecompanyname: 'Acme Mutual', policynumber: `P-${lic}`, insuranceamount: '1000000', expirationdate: `${exp}T00:00:00.000`, ...o });
+const q = (o = {}) => ({ report: 'insurance', days: 14, trades: ['plumbing'], filters: TRADES.plumbing, cities: [], counties: [], ...o });
+// Shapes copied from docs/datasets.md samples.
+const contractor = (lic, o = {}) => ({ contractorlicensenumber: lic, businessname: `${lic} PLUMBING LLC`, contractorlicensetypecode: 'PC', contractorlicensetypecodedesc: 'PLUMBING CONTRACTOR', ubi: '603320569', statuscode: 'A', contractorlicensestatus: 'ACTIVE', address1: '1 MAIN ST', city: 'VANCOUVER', state: 'WA', zip: '98661', phonenumber: '5039573452', specialtycode1: '01', specialtycode1desc: 'JOURNEY LEVEL', licenseexpirationdate: '2027-08-15T00:00:00.000', ...o });
+const policy = (lic, exp, o = {}) => ({ contractorlicensenumber: lic, contractorlicensetypecode: 'PC', licensestatus: 'A', insurancecompany: 'Ohio Security Ins Co', insurancepolicyno: `P-${lic}`, insuranceamt: '1000000.0000', insuranceagencyname: 'Collup Insurance', effectivedate: '2025-11-01T00:00:00.000', expirationdate: `${exp}T00:00:00.000`, lastupdatedate: '2026-04-24T00:00:00.000', ...o });
+const W = windowFor('2026-10-20', 14);
+const dec = (u) => decodeURIComponent(u);
 
 test('the window runs from today through today + days', () => {
-  assert.deepEqual(windowFor('2026-10-20', 14), { from: '2026-10-20', to: '2026-11-03' });
+  assert.deepEqual(W, { from: '2026-10-20', to: '2026-11-03' });
   assert.deepEqual(windowFor('2026-12-25', 10), { from: '2026-12-25', to: '2027-01-04' });
 });
 
-test('planQuery builds SoQL for trade, city and window', () => {
-  const p = planQuery({ query: q({ cities: ["O'BRIEN"] }), today: '2026-10-20' });
-  const general = decodeURIComponent(p.urls.general);
-  assert.match(general, /resource\/m8qx-ubtq\.json\?\$where=/);
-  assert.match(general, /upper\(specialtycode1desc\) like '%PLUMB%' OR upper\(specialtycode2desc\) like '%PLUMB%'/);
-  assert.match(general, /upper\(city\) in \('O''BRIEN'\)/);
-  const ins = decodeURIComponent(p.urls.insurance);
-  assert.match(ins, /ciwg-agsx\.json/);
-  assert.match(ins, /expirationdate between '2026-10-20T00:00:00' and '2026-11-03T23:59:59'/);
-  assert.deepEqual(p.window, { from: '2026-10-20', to: '2026-11-03' });
+test('plumbing means plumbing contractors plus construction contractors with the plumbing specialty', () => {
+  assert.equal(tradeWhere(TRADES.plumbing), "((contractorlicensetypecode = 'PC') OR (contractorlicensetypecode = 'CC' AND specialtycode1 in ('AD')))");
+  assert.equal(tradeWhere([]), '');
+  assert.equal(tradeWhere([{ type: 'CC', like: 'SANDBLAST' }]), "((contractorlicensetypecode = 'CC' AND upper(specialtycode1desc) like '%SANDBLAST%'))");
 });
 
-test('county filters are noted when the data has no county column', () => {
-  const p = planQuery({ query: q({ counties: ['CLARK'] }), today: '2026-10-20' });
-  assert.equal(p.notes.length, 1);
-  assert.ok(!/county/.test(decodeURIComponent(p.urls.general)));
+test('insurance reports start from active policies ending or cancelled in the window', () => {
+  const p = planQuery({ query: q(), today: '2026-10-20' });
+  const u = dec(p.urls.first);
+  assert.match(u, /resource\/ciwg-agsx\.json\?\$where=/);
+  assert.match(u, /\(expirationdate between '2026-10-20T00:00:00' and '2026-11-03T23:59:59' OR canceldate between '2026-10-20T00:00:00' and '2026-11-03T23:59:59'\)/);
+  assert.match(u, /licensestatus = 'A'/);
+  assert.match(u, /contractorlicensetypecode in \('PC', 'CC'\)/);
+  assert.deepEqual(p.notes, []);
 });
 
-test('license reports filter registrations by expiry instead', () => {
-  const p = planQuery({ query: q({ report: 'license' }), today: '2026-10-20' });
-  assert.match(decodeURIComponent(p.urls.general), /licenseexpirationdate between/);
+test('registration reports query the General dataset directly, with city and trade', () => {
+  const u = dec(planQuery({ query: q({ report: 'license', cities: ["O'BRIEN"] }), today: '2026-10-20' }).urls.first);
+  assert.match(u, /m8qx-ubtq\.json/);
+  assert.match(u, /licenseexpirationdate between/);
+  assert.match(u, /statuscode = 'A'/);
+  assert.match(u, /upper\(city\) in \('O''BRIEN'\)/);
+});
+
+test('counties and electrical insurance get a note', () => {
+  const p = planQuery({ query: q({ counties: ['CLARK'], filters: TRADES.electrical }), today: '2026-10-20' });
+  assert.equal(p.notes.length, 2);
+  assert.ok(!/county/i.test(dec(p.urls.first)));
 });
 
 test('parseRows surfaces Socrata errors', () => {
@@ -40,46 +51,60 @@ test('parseRows surfaces Socrata errors', () => {
   assert.throws(() => parseRows('<html>', 'x'), /did not return JSON/);
 });
 
-test('match keeps active contractors with a policy ending in the window, and asks about newer policies', () => {
-  const w = windowFor('2026-10-20', 14);
-  const m = matchCandidates({
-    query: q(), window: w,
-    generalRows: [contractor('AAA'), contractor('BBB'), contractor('CCC', { contractorlicensestatus: 'EXPIRED' })],
-    insuranceRows: [policy('AAA', '2026-10-25'), policy('BBB', '2026-11-01'), policy('CCC', '2026-10-22'), policy('ZZZ', '2026-10-22')],
-  });
-  assert.deepEqual(m.candidates.map((c) => c.license), ['AAA', 'BBB']);
-  assert.equal(m.stats.inactiveSkipped, 1);
-  assert.equal(m.renewalUrls.length, 1);
-  assert.match(decodeURIComponent(m.renewalUrls[0]), /in \('AAA', 'BBB'\) AND expirationdate > '2026-11-03T23:59:59'/);
-
-  const { rows, renewedCount } = buildRows({ query: q(), window: w, candidates: m.candidates, renewalRows: [policy('BBB', '2027-11-01')] });
-  assert.equal(renewedCount, 1);
-  assert.equal(rows.length, 1);
-  assert.equal(rows[0].license, 'AAA');
-  assert.equal(rows[0].ends, '2026-10-25');
-  assert.equal(rows[0].insurer, 'Acme Mutual');
-  assert.equal(rows[0].verify, 'https://secure.lni.wa.gov/verify/Detail.aspx?UBI=603568919&LIC=AAA&SAW=');
+test('lookups check trade, city and newer policies in chunks', () => {
+  const rows = Array.from({ length: 151 }, (_, k) => policy(`L${k}`, '2026-10-30'));
+  const l = planLookups({ query: q({ cities: ['VANCOUVER'] }), window: W, firstRows: [...rows, rows[0]] });
+  assert.deepEqual(l.map((x) => x.kind), ['contractors', 'newer', 'contractors', 'newer']);
+  assert.match(dec(l[0].url), /m8qx-ubtq.*contractorlicensenumber in \('L0', 'L1'.*statuscode = 'A' AND \(\(contractorlicensetypecode = 'PC'\).*upper\(city\) in \('VANCOUVER'\)/);
+  assert.match(dec(l[1].url), /ciwg-agsx.*expirationdate > '2026-11-03T23:59:59'/);
+  assert.ok(l.every((x) => x.url.length < 8000));
+  assert.deepEqual(planLookups({ query: q(), window: W, firstRows: [] }).map((x) => x.kind), ['none']);
+  assert.deepEqual(planLookups({ query: q({ report: 'license' }), window: W, firstRows: rows }).map((x) => x.kind), ['none']);
 });
 
-test('a cancelled newer policy does not count as renewed, and cancellation ends coverage', () => {
-  const w = windowFor('2026-10-20', 14);
-  const cands = [{ license: 'AAA', contractor: contractor('AAA'), policies: [policy('AAA', '2027-06-01', { canceldate: '2026-10-28T00:00:00.000' })] }];
-  assert.equal(coverageEnd(cands[0].policies[0]), '2026-10-28');
-  const { rows } = buildRows({ query: q(), window: w, candidates: cands, renewalRows: cands[0].policies });
+test('the report keeps active matches without newer coverage, soonest first', () => {
+  const firstRows = [policy('AAA', '2026-11-01'), policy('BBB', '2026-10-25'), policy('CCC', '2026-10-22'), policy('DDD', '2026-10-28')];
+  const lookups = [
+    // CCC is not in the trade or city asked for, so the lookup didn't return it.
+    { kind: 'contractors', rows: [contractor('AAA'), contractor('BBB'), contractor('DDD')] },
+    { kind: 'newer', rows: [policy('DDD', '2027-10-28', { insurancepolicyno: 'NEW' })] },
+  ];
+  const { rows, renewedCount } = buildRows({ query: q(), window: W, firstRows, lookups });
+  assert.equal(renewedCount, 1);
+  assert.deepEqual(rows.map((r) => [r.license, r.ends]), [['BBB', '2026-10-25'], ['AAA', '2026-11-01']]);
+  assert.equal(rows[0].phone, '(503) 957-3452');
+  assert.equal(rows[0].insurer, 'Ohio Security Ins Co');
+  assert.equal(rows[0].agency, 'Collup Insurance');
+  assert.equal(rows[0].specialties, 'PLUMBING CONTRACTOR: JOURNEY LEVEL');
+  assert.equal(rows[0].verify, 'https://secure.lni.wa.gov/verify/Detail.aspx?UBI=603320569&LIC=BBB&SAW=');
+});
+
+test('a cancellation ends coverage, and a cancelled newer policy is not a renewal', () => {
+  const cancelled = policy('AAA', '2027-06-01', { canceldate: '2026-10-28T00:00:00.000' });
+  assert.equal(coverageEnd(cancelled), '2026-10-28');
+  const { rows } = buildRows({
+    query: q(), window: W, firstRows: [cancelled],
+    lookups: [{ kind: 'contractors', rows: [contractor('AAA')] }, { kind: 'newer', rows: [cancelled] }],
+  });
   assert.equal(rows.length, 1);
   assert.equal(rows[0].ends, '2026-10-28');
   assert.equal(rows[0].cancelled, true);
 });
 
-test('with no candidates there is still one harmless renewal query, so the workflow keeps going', () => {
-  const m = matchCandidates({ query: q(), window: windowFor('2026-10-20', 14), generalRows: [], insuranceRows: [] });
-  assert.equal(m.renewalUrls.length, 1);
-  assert.match(decodeURIComponent(m.renewalUrls[0]), /= 'NONE'/);
+test('duplicate policy rows collapse to the latest update', () => {
+  const a = policy('AAA', '2026-10-30', { lastupdatedate: '2026-01-01T00:00:00.000' });
+  const b = policy('AAA', '2026-10-31', { lastupdatedate: '2026-05-01T00:00:00.000' });
+  assert.deepEqual(dedupePolicies([a, b, policy('AAA', '2026-10-30', { insurancepolicyno: 'WC-1' })]).map((p) => p.expirationdate.slice(0, 10)), ['2026-10-31', '2026-10-30']);
 });
 
-test('renewal queries are split into chunks', () => {
-  const lics = Array.from({ length: 301 }, (_, i) => `L${i}`);
-  const m = matchCandidates({ query: q(), window: windowFor('2026-10-20', 14), generalRows: lics.map((l) => contractor(l)), insuranceRows: lics.map((l) => policy(l, '2026-10-30')) });
-  assert.equal(m.renewalUrls.length, 3);
-  assert.ok(m.renewalUrls.every((u) => u.length < 8000));
+test('several policies ending in the window report the one that lasts longest', () => {
+  const firstRows = [policy('AAA', '2026-10-22', { insurancepolicyno: 'GL' }), policy('AAA', '2026-11-02', { insurancepolicyno: 'UMB' })];
+  const { rows } = buildRows({ query: q(), window: W, firstRows, lookups: [{ kind: 'contractors', rows: [contractor('AAA')] }] });
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].policy, 'UMB');
+});
+
+test('registration reports list active registrations by expiry', () => {
+  const { rows } = buildRows({ query: q({ report: 'license' }), window: W, firstRows: [contractor('AAA', { licenseexpirationdate: '2026-10-30T00:00:00.000' }), contractor('ZZZ', { statuscode: 'E' })] });
+  assert.deepEqual(rows.map((r) => [r.license, r.ends]), [['AAA', '2026-10-30']]);
 });

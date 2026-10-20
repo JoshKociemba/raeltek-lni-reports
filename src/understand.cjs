@@ -1,31 +1,46 @@
 // Turn a free-text request ("plumbing companies whose insurance expires in the next 14 days") into a query.
 // The local model only fills in a small JSON form; everything it says is checked and clamped here.
 
-// Trades people ask for, and the text to look for in L&I's specialty descriptions (upper case, matched as
-// substrings, so "PLUMB" finds "PLUMBING"). An unknown trade falls back to its own name.
+// Trades people ask for, as L&I license filters: a license type (CC construction, PC plumbing, EC electrical,
+// LC elevator) and, optionally, specialty codes. Codes repeat across types (01 is GENERAL for CC but JOURNEY
+// LEVEL for PC), so a code always goes with its type. Codes are from docs/datasets.md.
 const TRADES = {
-  plumbing: ['PLUMB'],
-  electrical: ['ELECTRIC'],
-  hvac: ['HVAC', 'HEATING', 'AIR COND', 'VENTILAT', 'REFRIGERAT'],
-  roofing: ['ROOF'],
-  painting: ['PAINT'],
-  landscaping: ['LANDSCAP'],
-  concrete: ['CONCRETE'],
-  excavation: ['EXCAVAT'],
-  fencing: ['FENC'],
-  flooring: ['FLOOR', 'CARPET', 'TILE'],
-  drywall: ['DRYWALL'],
-  masonry: ['MASON'],
-  siding: ['SIDING'],
-  gutters: ['GUTTER'],
-  windows: ['WINDOW', 'GLAZ'],
-  insulation: ['INSULAT'],
-  carpentry: ['CARPENT', 'FRAMING'],
-  cabinets: ['CABINET'],
-  demolition: ['DEMOLI'],
-  septic: ['SEPTIC'],
-  'well drilling': ['WELL'],
-  'general contractor': ['GENERAL'],
+  plumbing: [{ type: 'PC' }, { type: 'CC', codes: ['AD'] }],
+  electrical: [{ type: 'EC' }],
+  elevator: [{ type: 'LC' }],
+  hvac: [{ type: 'CC', codes: ['SM'] }, { type: 'EC', codes: ['6A', '6B'] }],
+  roofing: [{ type: 'CC', codes: ['CD'] }],
+  painting: [{ type: 'CC', codes: ['CB'] }],
+  landscaping: [{ type: 'CC', codes: ['BW'] }],
+  concrete: [{ type: 'CC', codes: ['BI'] }],
+  excavation: [{ type: 'CC', codes: ['SI'] }],
+  fencing: [{ type: 'CC', codes: ['BN'] }],
+  flooring: [{ type: 'CC', codes: ['SK', 'RE'] }],
+  drywall: [{ type: 'CC', codes: ['BK'] }],
+  masonry: [{ type: 'CC', codes: ['BZ'] }],
+  siding: [{ type: 'CC', codes: ['SW'] }],
+  gutters: [{ type: 'CC', codes: ['CV'] }],
+  windows: [{ type: 'CC', codes: ['BP', 'RH'] }],
+  insulation: [{ type: 'CC', codes: ['SO'] }],
+  carpentry: [{ type: 'CC', codes: ['SL', 'SB'] }],
+  cabinets: [{ type: 'CC', codes: ['SB'] }],
+  demolition: [{ type: 'CC', codes: ['SF'] }],
+  'side sewer': [{ type: 'CC', codes: ['SU'] }],
+  'well drilling': [{ type: 'CC', codes: ['WD'] }],
+  'tree service': [{ type: 'CC', codes: ['RF'] }],
+  'pressure washing': [{ type: 'CC', codes: ['PW'] }],
+  handyman: [{ type: 'CC', codes: ['HM'] }],
+  paving: [{ type: 'CC', codes: ['SS'] }],
+  'garage doors': [{ type: 'CC', codes: ['OG'] }],
+  pools: [{ type: 'CC', codes: ['RB'] }],
+  'pest control': [{ type: 'CC', codes: ['SZ'] }],
+  welding: [{ type: 'CC', codes: ['RI'] }],
+  'fire protection': [{ type: 'CC', codes: ['BO'] }],
+  irrigation: [{ type: 'CC', codes: ['BV'] }],
+  'drain cleaning': [{ type: 'CC', codes: ['RK'] }],
+  asbestos: [{ type: 'CC', codes: ['XX'] }],
+  signs: [{ type: 'CC', codes: ['SX'] }, { type: 'EC', codes: ['04'] }],
+  'general contractor': [{ type: 'CC', codes: ['01'] }],
 };
 
 const ALIASES = {
@@ -35,6 +50,10 @@ const ALIASES = {
   fence: 'fencing', floors: 'flooring', carpet: 'flooring', tile: 'flooring', mason: 'masonry', gutter: 'gutters',
   window: 'windows', carpenter: 'carpentry', framing: 'carpentry', cabinet: 'cabinets', demo: 'demolition',
   general: 'general contractor', 'general contractors': 'general contractor', gc: 'general contractor',
+  'heating and air': 'hvac', 'tree removal': 'tree service', tree: 'tree service', arborist: 'tree service',
+  'septic': 'side sewer', sewer: 'side sewer', pool: 'pools', 'pest': 'pest control', glass: 'windows', glazing: 'windows',
+  'garage door': 'garage doors', 'pressure washer': 'pressure washing', 'power washing': 'pressure washing',
+  sprinkler: 'irrigation', drywaller: 'drywall', 'concrete contractor': 'concrete', excavator: 'excavation',
 };
 
 const REPORTS = {
@@ -85,15 +104,16 @@ function understandRequest({ request, model, defaultDays = 14 }) {
   };
 }
 
-function tradeTerms(trade) {
+function tradeFilters(trade) {
   const t = String(trade || '').toLowerCase().replace(/[^a-z ]/g, ' ').replace(/\s+/g, ' ').trim()
     .replace(/ (contractors?|companies|company|businesses|services?)$/, '');
   if (!t) return null;
   const key = TRADES[t] ? t : ALIASES[t] || (TRADES[t.replace(/s$/, '')] ? t.replace(/s$/, '') : null);
-  if (key) return { trade: key, terms: TRADES[key] };
-  // Unknown trade: search for its first word's stem, e.g. "asphalt paving" looks for "ASPHALT".
+  if (key) return { trade: key, filters: TRADES[key] };
+  // Unknown trade: look for its first word's stem in construction specialty names, e.g. "stucco" finds nothing,
+  // "sandblasting" finds "Sandblasting".
   const stem = t.split(' ')[0].toUpperCase().replace(/(ING|ERS|ER|S)$/, '');
-  return stem.length >= 4 ? { trade: t, terms: [stem] } : null;
+  return stem.length >= 4 ? { trade: t, filters: [{ type: 'CC', like: stem }] } : null;
 }
 
 const place = (s) => String(s || '').replace(/,?\s*(wa|washington)\.?$/i, '').replace(/\s+county$/i, '').trim().toUpperCase();
@@ -114,7 +134,7 @@ function parseUnderstanding({ ollama, defaultDays = 14, maxDays = 90 }) {
     return { clear: false, question: String(a.clarifying_question || '').trim().slice(0, 500) };
   }
   const days = Math.min(Math.max(Math.round(Number(a.days) || defaultDays), 1), maxDays);
-  const trades = (Array.isArray(a.trades) ? a.trades : []).map(tradeTerms).filter(Boolean);
+  const trades = (Array.isArray(a.trades) ? a.trades : []).map(tradeFilters).filter(Boolean);
   const list = (v) => [...new Set((Array.isArray(v) ? v : []).map(place).filter(Boolean))].slice(0, 10);
   return {
     clear: true,
@@ -122,7 +142,7 @@ function parseUnderstanding({ ollama, defaultDays = 14, maxDays = 90 }) {
       report: a.report,
       days,
       trades: trades.map((t) => t.trade),
-      terms: [...new Set(trades.flatMap((t) => t.terms))],
+      filters: trades.flatMap((t) => t.filters),
       cities: list(a.cities),
       counties: list(a.counties),
       daysCapped: Number(a.days) > maxDays,
@@ -140,4 +160,4 @@ function describeQuery(q) {
 
 const titleCase = (s) => String(s).toLowerCase().replace(/\b[a-z]/g, (c) => c.toUpperCase());
 
-module.exports = { TRADES, REPORTS, UNDERSTAND_SCHEMA, understandPrompt, understandRequest, tradeTerms, parseUnderstanding, describeQuery, titleCase };
+module.exports = { TRADES, REPORTS, UNDERSTAND_SCHEMA, understandPrompt, understandRequest, tradeFilters, parseUnderstanding, describeQuery, titleCase };

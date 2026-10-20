@@ -1,6 +1,6 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { parseUnderstanding, tradeTerms, describeQuery, understandRequest } = require('../src/understand.cjs');
+const { parseUnderstanding, tradeFilters, describeQuery, understandRequest } = require('../src/understand.cjs');
 
 const reply = (o) => ({ message: { content: JSON.stringify({ understood: true, report: 'insurance', trades: [], days: 14, cities: [], counties: [], clarifying_question: '', ...o }) } });
 
@@ -13,18 +13,19 @@ test('the Ollama request asks for structured JSON with thinking off', () => {
 });
 
 test('trades map to specialty search terms', () => {
-  assert.deepEqual(tradeTerms('plumbers'), { trade: 'plumbing', terms: ['PLUMB'] });
-  assert.deepEqual(tradeTerms('Plumbing companies'), { trade: 'plumbing', terms: ['PLUMB'] });
-  assert.deepEqual(tradeTerms('roofing contractors'), { trade: 'roofing', terms: ['ROOF'] });
-  assert.equal(tradeTerms('HVAC').trade, 'hvac');
-  assert.deepEqual(tradeTerms('asphalt paving'), { trade: 'asphalt paving', terms: ['ASPHALT'] });
-  assert.equal(tradeTerms(''), null);
+  assert.deepEqual(tradeFilters('plumbers'), { trade: 'plumbing', filters: [{ type: 'PC' }, { type: 'CC', codes: ['AD'] }] });
+  assert.equal(tradeFilters('Plumbing companies').trade, 'plumbing');
+  assert.deepEqual(tradeFilters('roofing contractors'), { trade: 'roofing', filters: [{ type: 'CC', codes: ['CD'] }] });
+  assert.equal(tradeFilters('HVAC').trade, 'hvac');
+  assert.equal(tradeFilters('tree removal').trade, 'tree service');
+  assert.deepEqual(tradeFilters('sandblasting'), { trade: 'sandblasting', filters: [{ type: 'CC', like: 'SANDBLAST' }] });
+  assert.equal(tradeFilters(''), null);
 });
 
 test('the example request becomes a query', () => {
   const u = parseUnderstanding({ ollama: reply({ trades: ['plumbing'], cities: ['Vancouver, WA'], counties: ['Clark County'] }) });
   assert.equal(u.clear, true);
-  assert.deepEqual(u.query, { report: 'insurance', days: 14, trades: ['plumbing'], terms: ['PLUMB'], cities: ['VANCOUVER'], counties: ['CLARK'], daysCapped: false });
+  assert.deepEqual(u.query, { report: 'insurance', days: 14, trades: ['plumbing'], filters: [{ type: 'PC' }, { type: 'CC', codes: ['AD'] }], cities: ['VANCOUVER'], counties: ['CLARK'], daysCapped: false });
   assert.equal(describeQuery(u.query), 'Plumbing contractors in Vancouver, Clark County whose liability insurance expires in the next 14 days');
 });
 

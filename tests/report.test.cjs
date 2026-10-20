@@ -2,7 +2,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { renderReportHtml, replyText, buildReply, buildClarification, reportFileName, fmtDate } = require('../src/report.cjs');
 
-const query = { report: 'insurance', days: 14, trades: ['plumbing'], terms: ['PLUMB'], cities: [], counties: [] };
+const query = { report: 'insurance', days: 14, trades: ['plumbing'], filters: [], cities: [], counties: [] };
 const window = { from: '2026-10-20', to: '2026-11-03' };
 const row = { license: 'AAA', name: 'A & B <Plumbing>', ubi: '603568919', phone: '3605550100', address: '1 Main St, VANCOUVER, WA 98682', specialties: 'PLUMBING', ends: '2026-10-25', insurer: 'Acme', policy: 'P1', amount: '1000000', verify: 'https://secure.lni.wa.gov/verify/Detail.aspx?UBI=603568919&LIC=AAA&SAW=' };
 const inquiry = { sender: { address: 'pat@example.com', name: 'Pat Smith' }, subject: '[L&I Inquiry] plumbers', threadId: 't1' };

@@ -32,11 +32,15 @@ Every line should say `ok`. If one says `MISSING`, fix the name in `FIELDS` in `
 Send an email from an allowed address (not from josh@raeltek.com; the trigger skips mail from yourself) with subject `[L&I Inquiry] test` and a request in the body. Within five minutes a draft reply with the PDF should appear in Gmail's Drafts, in the same thread. Open the PDF and spot-check a few rows on the Verify links before sending.
 
 ## What it can and can't report
-- Liability insurance expiring, and contractor registration expiring, by trade (L&I specialty), city and number of days.
-- Bonds aren't supported yet. Requests for them get a clarification reply.
-- L&I's general dataset has no county column, so a county in a request is noted in the report and not applied; ask by city instead.
-- Electrical contractors are licensed under a separate L&I electrical program; this data covers construction contractor registrations, which may not include every electrician.
-- The open data is a daily snapshot, not live. The report says so, and each row links to Verify for the live record.
+- Liability insurance expiring (or cancelled) and contractor registration expiring, by trade, city and number of days. Only active registrations are listed.
+- Trades map to L&I license types and specialty codes in `TRADES` in `src/understand.cjs`. "Plumbing" means plumbing contractor licenses plus construction contractors registered with the plumbing specialty. A trade not in the list is matched by name against construction specialties.
+- A contractor with a policy ending in the window is left out if another policy on file runs past it (they've renewed, or have other coverage). The report counts how many were left out.
+- Bonds aren't supported yet (L&I stores bond expiry as text and keeps bond history). Requests for them get a clarification reply.
+- L&I's data has no county column, so a county in a request is noted in the report and not applied; ask by city instead.
+- L&I has insurance on file for very few electrical contractors and no elevator contractors, so those trades rarely appear in insurance reports. The report says so.
+- The open data is a daily snapshot (refreshed each business day), not live. The report says so, and each row links to Verify for the live record.
+
+Column names, codes and data quirks are in [datasets.md](datasets.md). To try a query against live data without n8n: `npm run try -- --trade plumbing --days 14 --city Vancouver` writes `report.html`.
 
 ## When something goes wrong
 - An email that was ignored (not on the list, failed DMARC, no tag) shows the reason in the **Check inquiries** node's log for that execution.

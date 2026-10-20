@@ -23,8 +23,8 @@ function renderReportHtml({ title, query, window, rows, notes = [], stats = {}, 
   const shown = rows.slice(0, maxRows);
   const insurance = query.report === 'insurance';
   const head = insurance
-    ? ['Coverage ends', 'Business', 'License / UBI', 'Specialties', 'Phone', 'Address', 'Insurer and policy']
-    : ['Registration expires', 'Business', 'License / UBI', 'Specialties', 'Phone', 'Address'];
+    ? ['Coverage ends', 'Business', 'License / UBI', 'License type', 'Phone', 'Address', 'Insurer and policy']
+    : ['Registration expires', 'Business', 'License / UBI', 'License type', 'Phone', 'Address'];
   const body = shown.map((r) => {
     const cells = [
       `<strong>${esc(fmtDate(r.ends))}</strong>${r.cancelled ? '<br><span class="flag">Cancellation</span>' : ''}`,
@@ -34,14 +34,13 @@ function renderReportHtml({ title, query, window, rows, notes = [], stats = {}, 
       esc(r.phone),
       esc(r.address),
     ];
-    if (insurance) cells.push(`${esc(r.insurer)}${r.policy ? `<br><span class="muted">${esc(r.policy)}</span>` : ''}${r.amount ? `<br><span class="muted">${money(r.amount)}</span>` : ''}`);
+    if (insurance) cells.push(`${esc(r.insurer)}${r.policy ? `<br><span class="muted">${esc(r.policy)}</span>` : ''}${r.agency ? `<br><span class="muted">Agent: ${esc(r.agency)}</span>` : ''}${r.amount ? `<br><span class="muted">${money(r.amount)}</span>` : ''}`);
     return `<tr>${cells.map((c) => `<td>${c}</td>`).join('')}</tr>`;
   }).join('\n');
   const allNotes = [...notes];
   if (rows.length > shown.length) allNotes.push(`Showing the first ${shown.length} of ${rows.length} matches. Narrow the request (a city or a shorter window) for the rest.`);
-  if (stats.generalTruncated || stats.insuranceTruncated) allNotes.push('L&I returned the maximum number of rows for one query, so some matches may be missing. Narrow the request.');
+  if (stats.truncated) allNotes.push('L&I returned the maximum number of rows for one query, so some matches may be missing. Narrow the request.');
   if (stats.renewedCount) allNotes.push(`${stats.renewedCount} contractor${stats.renewedCount === 1 ? '' : 's'} with a policy ending in this window ${stats.renewedCount === 1 ? 'was' : 'were'} left out because a newer policy is already on file.`);
-  if (stats.inactiveSkipped) allNotes.push(`${stats.inactiveSkipped} matching registration${stats.inactiveSkipped === 1 ? ' is' : 's are'} not active and ${stats.inactiveSkipped === 1 ? 'was' : 'were'} left out.`);
   if (query.daysCapped) allNotes.push(`The window was capped at ${query.days} days.`);
   return `<!doctype html>
 <html><head><meta charset="utf-8"><title>${esc(title)}</title>

@@ -135,57 +135,58 @@ return [{ json: { inquiry, clear: true, query: u.query, title: describeQuery(u.q
 
 ifNode('Understood?', [7, 1], '={{ $json.clear }}');
 
-socrata('Fetch insurance', [8, 0], '={{ $json.urls.insurance }}');
-socrata('Fetch contractors', [9, 0], "={{ $('Plan query').first().json.urls.general }}");
+socrata('Fetch matches', [8, 0], '={{ $json.urls.first }}');
 
-code('Match', [10, 0], ['lni.cjs'], `
+code('Plan lookups', [9, 0], ['lni.cjs'], `
 ${settings}
 const plan = $('Plan query').first().json;
-const m = matchCandidates({
-  query: plan.query, window: plan.window, appToken: s.SOCRATA_APP_TOKEN,
-  insuranceRows: parseRows($('Fetch insurance').first().json.body, 'Insurance data'),
-  generalRows: parseRows($input.first().json.body, 'Contractor data'),
+const firstRows = parseRows($input.first().json.body, 'L&I data');
+return planLookups({ query: plan.query, window: plan.window, firstRows, appToken: s.SOCRATA_APP_TOKEN }).map((l) => ({ json: l }));
+`);
+
+// One request per chunk of license numbers; one second apart to stay polite to data.wa.gov without a token.
+node('Fetch lookups', 'n8n-nodes-base.httpRequest', 4.2, [10, 0], {
+  url: '={{ $json.url }}',
+  options: {
+    response: { response: { responseFormat: 'text', outputPropertyName: 'body' } },
+    timeout: 120000,
+    batching: { batch: { batchSize: 1, batchInterval: 1000 } },
+  },
 });
-return [{ json: { candidates: m.candidates, stats: m.stats, renewalUrls: m.renewalUrls } }];
-`);
 
-code('Renewal checks', [11, 0], [], `
-return $input.first().json.renewalUrls.map((url) => ({ json: { url } }));
-`);
-
-socrata('Check for newer policies', [12, 0], '={{ $json.url }}');
-
-code('Build report', [13, 0], ['lni.cjs', 'report.cjs'], `
+code('Build report', [11, 0], ['lni.cjs', 'report.cjs'], `
 ${settings}
 const plan = $('Plan query').first().json;
-const m = $('Match').first().json;
-const renewalRows = $input.all().flatMap((i) => parseRows(i.json.body, 'Newer policy check'));
-const { rows, renewedCount } = buildRows({ query: plan.query, window: plan.window, candidates: m.candidates, renewalRows });
+const firstRows = parseRows($('Fetch matches').first().json.body, 'L&I data');
+// Fetch lookups returns one item per Plan lookups item, in the same order.
+const kinds = $('Plan lookups').all().map((i) => i.json.kind);
+const lookups = $input.all().map((i, k) => ({ kind: kinds[k], rows: parseRows(i.json.body, 'L&I lookup') }));
+const { rows, renewedCount, truncated } = buildRows({ query: plan.query, window: plan.window, firstRows, lookups });
 const generatedAt = $now.setZone('America/Los_Angeles').toFormat('LLL d, yyyy h:mm a');
 const html = renderReportHtml({
   title: plan.title, query: plan.query, window: plan.window, rows, notes: plan.notes,
-  stats: { ...m.stats, renewedCount }, generatedAt, maxRows: Number(s.MAX_ROWS) || 300,
+  stats: { renewedCount, truncated }, generatedAt, maxRows: Number(s.MAX_ROWS) || 300,
 });
 return [{ json: { count: rows.length, html, ollama_request: replyRequest({
   senderName: plan.inquiry.sender.name, title: plan.title, count: rows.length, model: s.OLLAMA_MODEL,
 }) } }];
 `);
 
-ollama('Write reply', [14, 0], '={{ JSON.stringify($json.ollama_request) }}');
+ollama('Write reply', [12, 0], '={{ JSON.stringify($json.ollama_request) }}');
 
-code('Report HTML', [14.5, 0], [], `
+code('Report HTML', [13, 0], [], `
 return [{ json: { html: $('Build report').first().json.html } }];
 `);
 
 // Gotenberg needs the page as a file called index.html.
-node('HTML file', 'n8n-nodes-base.convertToFile', 1.1, [15, 0], {
+node('HTML file', 'n8n-nodes-base.convertToFile', 1.1, [14, 0], {
   operation: 'toText',
   sourceProperty: 'html',
   binaryPropertyName: 'data',
   options: { fileName: 'index.html' },
 });
 
-node('Make PDF', 'n8n-nodes-base.httpRequest', 4.2, [16, 0], {
+node('Make PDF', 'n8n-nodes-base.httpRequest', 4.2, [15, 0], {
   method: 'POST',
   url: "={{ $('Settings').first().json.GOTENBERG_URL }}/forms/chromium/convert/html",
   sendBody: true,
@@ -200,7 +201,7 @@ node('Make PDF', 'n8n-nodes-base.httpRequest', 4.2, [16, 0], {
   options: { response: { response: { responseFormat: 'file', outputPropertyName: 'data' } }, timeout: 120000 },
 });
 
-code('Reply email', [17, 0], ['report.cjs'], `
+code('Reply email', [16, 0], ['report.cjs'], `
 ${settings}
 ${today}
 const plan = $('Plan query').first().json;
@@ -211,7 +212,7 @@ return [{ json: { draft, threadId: plan.inquiry.threadId }, binary: { data: { ..
 `);
 
 // Draft › Create only. There is deliberately no send node anywhere in this workflow.
-node('Draft report reply', 'n8n-nodes-base.gmail', 2.1, [18, 0], {
+node('Draft report reply', 'n8n-nodes-base.gmail', 2.1, [17, 0], {
   resource: 'draft',
   subject: '={{ $json.draft.subject }}',
   emailType: 'html',
@@ -246,14 +247,13 @@ const link = (from, to, output = 0) => {
 };
 [['New inquiry email', 'Settings'], ['Settings', 'Check inquiries'], ['Check inquiries', 'Loop over inquiries'],
   ['Prepare', 'Understand request'], ['Understand request', 'Plan query'], ['Plan query', 'Understood?'],
-  ['Fetch insurance', 'Fetch contractors'], ['Fetch contractors', 'Match'], ['Match', 'Renewal checks'],
-  ['Renewal checks', 'Check for newer policies'], ['Check for newer policies', 'Build report'], ['Build report', 'Write reply'],
+  ['Fetch matches', 'Plan lookups'], ['Plan lookups', 'Fetch lookups'], ['Fetch lookups', 'Build report'], ['Build report', 'Write reply'],
   ['Write reply', 'Report HTML'], ['Report HTML', 'HTML file'], ['HTML file', 'Make PDF'], ['Make PDF', 'Reply email'], ['Reply email', 'Draft report reply'],
   ['Draft report reply', 'Loop over inquiries'], ['Clarification email', 'Draft clarification'],
   ['Draft clarification', 'Loop over inquiries']].forEach(([a, b]) => link(a, b));
 // Loop over inquiries: output 0 is "done", output 1 is the next inquiry.
 link('Loop over inquiries', 'Prepare', 1);
-link('Understood?', 'Fetch insurance', 0); link('Understood?', 'Clarification email', 1);
+link('Understood?', 'Fetch matches', 0); link('Understood?', 'Clarification email', 1);
 
 const workflow = {
   name: 'L&I inquiry reports',

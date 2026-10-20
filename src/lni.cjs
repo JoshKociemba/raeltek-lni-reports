@@ -1,48 +1,53 @@
 // Query Washington L&I's official contractor open data (data.wa.gov, Socrata) and check the results.
 // The verify site (secure.lni.wa.gov/verify) shows the same records one contractor at a time; we link to it
-// for spot checks instead of scraping it.
+// for spot checks instead of scraping it. Column names and quirks are in docs/datasets.md.
 
 const BASE = 'https://data.wa.gov/resource';
 const DATASETS = {
-  general: 'm8qx-ubtq', // L&I Contractor License Data - General
-  insurance: 'ciwg-agsx', // L&I Contractor License Data - Insurance
+  general: 'm8qx-ubtq', // L&I Contractor License Data - General: one row per license, every status
+  insurance: 'ciwg-agsx', // L&I Contractor License Data - Insurance: current policies only, several per license
 };
 
-// Column names. Run `npm run check:fields` (it needs to reach data.wa.gov) after L&I changes a dataset.
-// An empty name switches that part off: an empty county means county filters are ignored, with a note.
+// Run `npm run check:fields` after L&I changes a dataset.
 const FIELDS = {
   general: {
     license: 'contractorlicensenumber',
     name: 'businessname',
     ubi: 'ubi',
-    type: 'contractorlicensetypecodedesc',
-    status: 'contractorlicensestatus',
+    type: 'contractorlicensetypecode',
+    typeDesc: 'contractorlicensetypecodedesc',
+    status: 'statuscode',
     expires: 'licenseexpirationdate',
     phone: 'phonenumber',
     address: 'address1',
     city: 'city',
     state: 'state',
     zip: 'zip',
-    county: '',
-    specialties: ['specialtycode1desc', 'specialtycode2desc'],
+    specialty: 'specialtycode1',
+    specialtyDesc: 'specialtycode1desc',
   },
   insurance: {
     license: 'contractorlicensenumber',
-    company: 'insurancecompanyname',
-    policy: 'policynumber',
-    amount: 'insuranceamount',
+    type: 'contractorlicensetypecode',
+    status: 'licensestatus',
+    company: 'insurancecompany',
+    agency: 'insuranceagencyname',
+    policy: 'insurancepolicyno',
+    amount: 'insuranceamt',
     starts: 'effectivedate',
     expires: 'expirationdate',
     cancelled: 'canceldate',
+    updated: 'lastupdatedate',
   },
 };
 
-const ACTIVE = /^(A|ACTIVE)$/i;
+const ACTIVE = 'A';
 const ROW_LIMIT = 50000;
-const RENEWAL_CHUNK = 150;
+const CHUNK = 150;
 
 const quote = (s) => `'${String(s).replace(/'/g, "''")}'`;
 const day = (iso) => String(iso || '').slice(0, 10);
+const list = (xs) => xs.map(quote).join(', ');
 
 function url(dataset, params, appToken) {
   const q = Object.entries({ ...params, ...(appToken ? { $$app_token: appToken } : {}) })
@@ -60,27 +65,53 @@ function windowFor(today, days) {
 
 const between = (field, w) => `${field} between ${quote(`${w.from}T00:00:00`)} and ${quote(`${w.to}T23:59:59`)}`;
 
-/** The two Socrata queries for a request: matching contractors, and policies (or registrations) ending in the window. */
+/** SoQL for the trade filters on the General dataset, e.g. PC, or CC with specialty AD. Empty means every trade. */
+function tradeWhere(filters) {
+  const g = FIELDS.general;
+  if (!filters.length) return '';
+  return `(${filters.map((f) => {
+    const parts = [`${g.type} = ${quote(f.type)}`];
+    if (f.codes) parts.push(`${g.specialty} in (${list(f.codes)})`);
+    if (f.like) parts.push(`upper(${g.specialtyDesc}) like ${quote(`%${f.like}%`)}`);
+    return `(${parts.join(' AND ')})`;
+  }).join(' OR ')})`;
+}
+
+/** Filters every lookup on the General dataset shares: active, trade, city. */
+function generalWhere(query) {
+  const g = FIELDS.general;
+  return [
+    `${g.status} = ${quote(ACTIVE)}`,
+    tradeWhere(query.filters),
+    query.cities.length ? `upper(${g.city}) in (${list(query.cities)})` : '',
+  ].filter(Boolean).join(' AND ');
+}
+
+const harmless = (appToken) => url('insurance', { $where: `${FIELDS.insurance.license} = 'NONE'`, $limit: 1 }, appToken);
+
+/**
+ * The first query for a request. Insurance reports start from the policies ending (or cancelled) in the window,
+ * which is a few thousand rows statewide; registration reports start from the General dataset.
+ */
 function planQuery({ query, today, appToken }) {
   const g = FIELDS.general;
   const i = FIELDS.insurance;
   const w = windowFor(today, query.days);
-  const where = [];
-  if (query.terms.length) {
-    where.push(`(${g.specialties.flatMap((f) => query.terms.map((t) => `upper(${f}) like ${quote(`%${t}%`)}`)).join(' OR ')})`);
-  }
-  if (query.cities.length) where.push(`upper(${g.city}) in (${query.cities.map(quote).join(', ')})`);
   const notes = [];
-  if (query.counties.length) {
-    if (g.county) where.push(`upper(${g.county}) in (${query.counties.map(quote).join(', ')})`);
-    else notes.push(`L&I's data has no county column, so the county filter (${query.counties.join(', ')}) was not applied; filter by city instead.`);
+  if (query.counties.length) notes.push(`L&I's data has no county column, so the county filter (${query.counties.join(', ')}) was not applied. Ask by city instead.`);
+  if (query.report === 'insurance' && query.filters.some((f) => f.type === 'EC' || f.type === 'LC')) {
+    notes.push('L&I has insurance on file for very few electrical contractors and no elevator contractors, so they rarely appear in insurance reports.');
   }
-  if (query.report === 'license') where.push(between(g.expires, w));
-  const general = url('general', { $where: where.join(' AND ') || '1=1', $limit: ROW_LIMIT, $order: g.license }, appToken);
-  const insurance = query.report === 'insurance'
-    ? url('insurance', { $where: between(i.expires, w), $limit: ROW_LIMIT, $order: i.license }, appToken)
-    : url('insurance', { $where: `${i.license} = 'NONE'`, $limit: 1 }, appToken);
-  return { window: w, notes, urls: { general, insurance } };
+  let first;
+  if (query.report === 'insurance') {
+    const types = [...new Set(query.filters.map((f) => f.type))];
+    const where = [`(${between(i.expires, w)} OR ${between(i.cancelled, w)})`, `${i.status} = ${quote(ACTIVE)}`];
+    if (types.length) where.push(`${i.type} in (${list(types)})`);
+    first = url('insurance', { $where: where.join(' AND '), $limit: ROW_LIMIT, $order: i.license }, appToken);
+  } else {
+    first = url('general', { $where: `${between(g.expires, w)} AND ${generalWhere(query)}`, $limit: ROW_LIMIT, $order: g.license }, appToken);
+  }
+  return { window: w, notes, urls: { first } };
 }
 
 /** Socrata returns a JSON array, or { error, message } on a bad query. */
@@ -96,62 +127,45 @@ function parseRows(body, label) {
   return data;
 }
 
-const licenseOf = (row, f) => String(row[f.license] || '').trim().toUpperCase();
-const coverageEnd = (row) => {
+const licenseOf = (row, f) => String(row[f.license] || '').trim();
+
+/**
+ * For insurance reports, the follow-up queries, in chunks of license numbers: which of the contractors are
+ * active and in the requested trade and city ("contractors"), and which already have a policy running past the
+ * window ("newer"). Always returns at least one item so the workflow carries on when nothing matched.
+ */
+function planLookups({ query, window, firstRows, appToken }) {
+  const i = FIELDS.insurance;
+  const g = FIELDS.general;
+  if (query.report !== 'insurance') return [{ kind: 'none', url: harmless(appToken) }];
+  const lics = [...new Set(firstRows.map((r) => licenseOf(r, i)).filter(Boolean))];
+  const out = [];
+  for (let k = 0; k < lics.length; k += CHUNK) {
+    const chunk = list(lics.slice(k, k + CHUNK));
+    out.push({ kind: 'contractors', url: url('general', { $where: `${g.license} in (${chunk}) AND ${generalWhere(query)}`, $limit: ROW_LIMIT }, appToken) });
+    out.push({ kind: 'newer', url: url('insurance', { $where: `${i.license} in (${chunk}) AND ${i.expires} > ${quote(`${window.to}T23:59:59`)}`, $limit: ROW_LIMIT }, appToken) });
+  }
+  return out.length ? out : [{ kind: 'none', url: harmless(appToken) }];
+}
+
+/** The earlier of expiry and cancellation. */
+function coverageEnd(row) {
   const i = FIELDS.insurance;
   const exp = day(row[i.expires]);
   const can = day(row[i.cancelled]);
   return can && (!exp || can < exp) ? can : exp;
-};
+}
 
-/**
- * Join the two result sets. Only active registrations are kept. Returns the candidates and, for insurance
- * reports, the URLs that look for a newer policy on file for any of them (one URL per chunk; always at least one).
- */
-function matchCandidates({ query, window, generalRows, insuranceRows, appToken }) {
-  const g = FIELDS.general;
+/** L&I sometimes lists the same policy twice; keep the most recently updated copy. */
+function dedupePolicies(rows) {
   const i = FIELDS.insurance;
-  const contractors = new Map();
-  let inactive = 0;
-  for (const r of generalRows) {
-    const lic = licenseOf(r, g);
-    if (!lic) continue;
-    if (g.status && r[g.status] !== undefined && !ACTIVE.test(String(r[g.status]).trim())) { inactive++; continue; }
-    contractors.set(lic, r);
+  const best = new Map();
+  for (const r of rows) {
+    const key = `${licenseOf(r, i)}|${String(r[i.policy] || '').trim().toUpperCase()}`;
+    const prev = best.get(key);
+    if (!prev || day(r[i.updated]) > day(prev[i.updated])) best.set(key, r);
   }
-  const candidates = [];
-  if (query.report === 'license') {
-    for (const [lic, r] of contractors) candidates.push({ license: lic, contractor: r, policies: [] });
-  } else {
-    const byLicense = new Map();
-    for (const p of insuranceRows) {
-      const lic = licenseOf(p, i);
-      if (!contractors.has(lic)) continue;
-      if (!byLicense.has(lic)) byLicense.set(lic, []);
-      byLicense.get(lic).push(p);
-    }
-    for (const [lic, policies] of byLicense) candidates.push({ license: lic, contractor: contractors.get(lic), policies });
-  }
-  const lics = query.report === 'insurance' ? candidates.map((c) => c.license) : [];
-  const renewalUrls = [];
-  for (let k = 0; k < lics.length; k += RENEWAL_CHUNK) {
-    const chunk = lics.slice(k, k + RENEWAL_CHUNK);
-    renewalUrls.push(url('insurance', {
-      $where: `upper(${i.license}) in (${chunk.map(quote).join(', ')}) AND ${i.expires} > ${quote(`${window.to}T23:59:59`)}`,
-      $limit: ROW_LIMIT,
-    }, appToken));
-  }
-  if (!renewalUrls.length) renewalUrls.push(url('insurance', { $where: `${i.license} = 'NONE'`, $limit: 1 }, appToken));
-  return {
-    candidates,
-    stats: {
-      contractorsMatched: contractors.size,
-      inactiveSkipped: inactive,
-      generalTruncated: generalRows.length >= ROW_LIMIT,
-      insuranceTruncated: insuranceRows.length >= ROW_LIMIT,
-    },
-    renewalUrls,
-  };
+  return [...best.values()];
 }
 
 function verifyUrl(contractor) {
@@ -161,52 +175,71 @@ function verifyUrl(contractor) {
   return `https://secure.lni.wa.gov/verify/Detail.aspx?UBI=${encodeURIComponent(ubi)}&LIC=${encodeURIComponent(lic)}&SAW=`;
 }
 
+const phone = (p) => {
+  const d = String(p || '').replace(/\D/g, '');
+  return d.length === 10 ? `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}` : String(p || '').trim();
+};
+
+function contractorRow(r) {
+  const g = FIELDS.general;
+  return {
+    license: licenseOf(r, g),
+    name: String(r[g.name] || '').trim(),
+    ubi: String(r[g.ubi] || '').trim(),
+    phone: phone(r[g.phone]),
+    address: [r[g.address], r[g.city], [r[g.state], r[g.zip]].filter(Boolean).join(' ')].map((x) => String(x || '').trim()).filter(Boolean).join(', '),
+    city: String(r[g.city] || '').trim(),
+    specialties: [r[g.typeDesc], r[g.specialtyDesc]].map((x) => String(x || '').trim()).filter(Boolean).join(': '),
+    licenseExpires: day(r[g.expires]),
+    verify: verifyUrl(r),
+  };
+}
+
 /**
- * The checked report rows. For insurance, a contractor is dropped when a policy on file runs past the window
- * (they have already renewed or carry other coverage), and the coverage end is the earlier of expiry and
- * cancellation. Sorted soonest first.
+ * The checked report rows, soonest first. lookups is [{ kind, rows }] from planLookups.
+ * Insurance: the contractor must be active and in the trade and city asked for, and is dropped when any policy
+ * on file runs past the window (already renewed, or other coverage). Cancelled policies end at the cancel date.
  */
-function buildRows({ query, window, candidates, renewalRows = [] }) {
+function buildRows({ query, window, firstRows, lookups = [] }) {
   const g = FIELDS.general;
   const i = FIELDS.insurance;
-  const renewed = new Set(renewalRows.filter((p) => !day(p[i.cancelled]) || day(p[i.cancelled]) > window.to).map((p) => licenseOf(p, i)));
+  if (query.report === 'license') {
+    const rows = firstRows.filter((r) => r[g.status] === ACTIVE).map((r) => {
+      const c = contractorRow(r);
+      return { ...c, ends: c.licenseExpires };
+    });
+    rows.sort((a, b) => a.ends.localeCompare(b.ends) || a.name.localeCompare(b.name));
+    return { rows, renewedCount: 0, truncated: firstRows.length >= ROW_LIMIT };
+  }
+  const of = (kind) => lookups.filter((l) => l.kind === kind).flatMap((l) => l.rows);
+  const contractors = new Map(of('contractors').filter((r) => r[g.status] === ACTIVE).map((r) => [licenseOf(r, g), r]));
+  const renewed = new Set(of('newer').filter((p) => !day(p[i.cancelled]) || day(p[i.cancelled]) > window.to).map((p) => licenseOf(p, i)));
+  const policies = new Map();
+  for (const p of dedupePolicies(firstRows)) {
+    const lic = licenseOf(p, i);
+    const end = coverageEnd(p);
+    if (!contractors.has(lic) || !end || end < window.from || end > window.to) continue;
+    if (!policies.has(lic)) policies.set(lic, []);
+    policies.get(lic).push({ p, end });
+  }
   const rows = [];
   let renewedCount = 0;
-  for (const c of candidates) {
-    const r = c.contractor;
-    const base = {
-      license: c.license,
-      name: String(r[g.name] || '').trim(),
-      ubi: String(r[g.ubi] || '').trim(),
-      phone: String(r[g.phone] || '').trim(),
-      address: [r[g.address], r[g.city], [r[g.state], r[g.zip]].filter(Boolean).join(' ')].filter(Boolean).join(', '),
-      city: String(r[g.city] || '').trim(),
-      specialties: [...new Set(g.specialties.map((f) => String(r[f] || '').trim()).filter(Boolean))].join('; '),
-      licenseExpires: day(r[g.expires]),
-      verify: verifyUrl(r),
-    };
-    if (query.report === 'license') {
-      rows.push({ ...base, ends: base.licenseExpires });
-      continue;
-    }
-    if (renewed.has(c.license)) { renewedCount++; continue; }
-    const ending = c.policies
-      .map((p) => ({ p, end: coverageEnd(p) }))
-      .filter((x) => x.end && x.end >= window.from && x.end <= window.to)
-      .sort((a, b) => b.end.localeCompare(a.end))[0];
-    if (!ending) continue;
-    const p = ending.p;
+  for (const [lic, ps] of policies) {
+    if (renewed.has(lic)) { renewedCount++; continue; }
+    // The policy that lasts longest is when coverage on file actually runs out.
+    const { p, end } = ps.sort((a, b) => b.end.localeCompare(a.end))[0];
     rows.push({
-      ...base,
-      ends: ending.end,
+      ...contractorRow(contractors.get(lic)),
+      ends: end,
       insurer: String(p[i.company] || '').trim(),
+      agency: String(p[i.agency] || '').trim(),
       policy: String(p[i.policy] || '').trim(),
       amount: String(p[i.amount] || '').trim(),
-      cancelled: day(p[i.cancelled]) && day(p[i.cancelled]) === ending.end,
+      cancelled: !!day(p[i.cancelled]) && day(p[i.cancelled]) === end,
     });
   }
   rows.sort((a, b) => a.ends.localeCompare(b.ends) || a.name.localeCompare(b.name));
-  return { rows, renewedCount };
+  return { rows, renewedCount, truncated: firstRows.length >= ROW_LIMIT };
 }
 
-module.exports = { BASE, DATASETS, FIELDS, ROW_LIMIT, windowFor, planQuery, parseRows, matchCandidates, buildRows, verifyUrl, coverageEnd };
+module.exports = { BASE, DATASETS, FIELDS, ROW_LIMIT, windowFor, tradeWhere, planQuery, parseRows, planLookups, coverageEnd, dedupePolicies, buildRows, verifyUrl };
