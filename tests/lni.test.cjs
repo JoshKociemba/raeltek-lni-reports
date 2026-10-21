@@ -31,6 +31,15 @@ test('a specialty trade starts from its active contractors', () => {
   assert.equal(p.notes.length, 1, 'mailing-address note');
 });
 
+test('general contractors start from insurance, since there are more of them than one query returns', () => {
+  const p = planQuery({ query: q({ trades: ['general contractor'], filters: TRADES['general contractor'] }), today: '2026-10-20' });
+  assert.equal(p.start, 'insurance');
+  assert.match(dec(p.urls.first), /ciwg-agsx.*licensestatus = 'A' AND contractorlicensetypecode in \('CC'\)/);
+  // The contractor lookup is what keeps only the GCs.
+  const l = planLookups({ query: q({ trades: ['general contractor'], filters: TRADES['general contractor'] }), start: p.start, firstRows: [policy('AAA', '2026-10-30')] });
+  assert.match(dec(l[0].url), /m8qx-ubtq.*contractorlicensenumber in \('AAA'\) AND statuscode = 'A' AND \(\(contractorlicensetypecode = 'CC' AND specialtycode1 in \('01'\)\)\)/);
+});
+
 test('a whole-license-type trade starts from insurance filtered by type', () => {
   const p = planQuery({ query: q(), today: '2026-10-20' });
   assert.equal(p.start, 'insurance');
