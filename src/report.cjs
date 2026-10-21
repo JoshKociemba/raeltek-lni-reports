@@ -107,13 +107,15 @@ function replyRequest({ senderName, title, count, model }) {
   const facts = summary ? `It lists ${summary}.` : `No contractors matched: ${title}.`;
   const prompt = `Write the body of a short, friendly reply email from Josh to ${senderName || 'a colleague'}, who asked for a report.
 Say the report they asked for is attached. ${facts}
-Say each fact once. One or two sentences. No greeting line, no sign-off, no subject, no placeholders, no dashes. Plain text only. /no_think`;
+Say each fact once. One or two sentences. No greeting line, no sign-off, no subject, no placeholders, no dashes.
+Return JSON with the email body in "note".`;
   return {
     model: model || 'qwen3:4b',
     messages: [{ role: 'user', content: prompt }],
+    // qwen3 reasons out loud in plain text despite think:false; a JSON answer (as Understand request uses) stops that.
+    format: { type: 'object', properties: { note: { type: 'string' } }, required: ['note'] },
     think: false,
     stream: false,
-    // qwen3 can still reason out loud despite think:false; the cap keeps a runaway answer from taking 40 seconds.
     options: { temperature: 0.6, num_predict: 400 },
   };
 }
@@ -134,10 +136,12 @@ function replyText(ollama, { title, count }) {
     : `I didn't find any ${title.charAt(0).toLowerCase()}${title.slice(1)}. The attached report has the details; let me know if you'd like a wider search.`;
   let t = '';
   try { t = String(ollama.message.content || ''); } catch { return fallback; }
+  try { t = String(JSON.parse(t).note || ''); } catch { /* older answers were plain text */ }
   // Its reasoning can arrive with only the closing </think> tag, so drop everything up to the last one.
   if (t.includes('</think>')) t = t.slice(t.lastIndexOf('</think>') + '</think>'.length);
   else if (/<think>/.test(t)) return fallback;
-  t = t.replace(/^\s*(hi|hello|hey)\b[^\n]*\n/i, '').replace(/\n*(best|thanks|cheers|regards)[\s\S]*$/i, '')
+  // The email adds its own "Hi Josh,", so drop a greeting the model starts with, on its own line or not.
+  t = t.replace(/^\s*(hi|hello|hey|dear)\b[^,.!\n]*([,.!]\s*|\n)/i, '').replace(/\n*(best|thanks|cheers|regards)[\s\S]*$/i, '')
     .replace(/\s*[—–]\s*/g, ', ').replace(/^["']|["']$/g, '').trim();
   if (!t || t.length > 500 || /[[\]{}]/.test(t) || !/attach/i.test(t)) return fallback;
   return t;

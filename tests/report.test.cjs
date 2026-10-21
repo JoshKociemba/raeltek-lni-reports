@@ -35,6 +35,12 @@ test('reply text uses the model when it behaves, and a template otherwise', () =
   const thinking = { message: { content: `${'Okay, let me think. '.repeat(300)}</think>\n\nThe report you asked for is attached — it lists 5 painters.` } };
   assert.equal(replyText(thinking, { title: 'X', count: 5 }), 'The report you asked for is attached, it lists 5 painters.');
   assert.match(replyText({ message: { content: '<think>still going' } }, { title: 'X things', count: 2 }), /^Attached is/);
+  // The note comes back as JSON; reasoning cut off before an answer isn't valid JSON or a note, so the template is used.
+  assert.equal(replyText({ message: { content: JSON.stringify({ note: 'The report you asked for is attached.' }) } }, { title: 'X', count: 1 }), 'The report you asked for is attached.');
+  // Seen live: qwen3 greets despite being told not to, and the email already says "Hi Josh,".
+  const greeted = { message: { content: JSON.stringify({ note: "Hi Josh, I've attached the report listing the 5 painting contractors." }) } };
+  assert.equal(replyText(greeted, { title: 'X', count: 5 }), "I've attached the report listing the 5 painting contractors.");
+  assert.match(replyText({ message: { content: 'We are writing a short, friendly reply email body. '.repeat(30) } }, { title: 'X things', count: 2 }), /^Attached is/);
 });
 
 test('the template says a requested count once', () => {
