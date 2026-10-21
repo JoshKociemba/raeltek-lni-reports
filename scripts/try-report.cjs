@@ -52,7 +52,7 @@ async function main() {
     }
     const v = applyVerification({ rows, checks, window: plan.window });
     rows = v.rows;
-    verify = { verifiedAt: new Date().toLocaleString('en-US', { timeZone: 'America/Los_Angeles' }), renewedOnVerify: v.renewedOnVerify, verifyFailed: v.verifyFailed };
+    verify = { verifiedAt: new Date().toLocaleString('en-US', { timeZone: 'America/Los_Angeles' }), renewedOnVerify: v.renewedOnVerify, verifyFailed: v.verifyFailed, notChecked: v.notChecked };
     console.log(`Checked ${n} on Verify: ${v.renewedOnVerify} left out (policy past the window), ${v.verifyFailed} failed`);
   }
   for (const r of rows.slice(0, 10)) console.log(`  ${r.ends}  ${r.name}  ${r.license}  ${r.city}  ${r.insurer || ''}  ${r.verified || ''}`);

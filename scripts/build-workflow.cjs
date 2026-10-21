@@ -220,7 +220,7 @@ if ($('Build report').first().json.check) {
   const checks = $('Check on Verify').all().map((i) => ({ body: i.json.body, error: i.json.error }));
   const v = applyVerification({ rows: built, checks, window: plan.window });
   rows = v.rows;
-  verify = { verifiedAt: generatedAt, renewedOnVerify: v.renewedOnVerify, verifyFailed: v.verifyFailed };
+  verify = { verifiedAt: generatedAt, renewedOnVerify: v.renewedOnVerify, verifyFailed: v.verifyFailed, notChecked: v.notChecked };
 }
 const html = renderReportHtml({
   title: plan.title, query: plan.query, window: plan.window, rows, notes: plan.notes,

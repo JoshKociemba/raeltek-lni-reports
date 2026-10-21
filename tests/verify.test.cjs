@@ -27,8 +27,8 @@ test('a contractor with a policy past the window on Verify is dropped; failures 
   const lapsing = answer([ins('Atlantic Casualty', '10/30/2025', '10/30/2026'), ins('Old', '1/1/2020', '1/1/2021')]);
   const v = applyVerification({ rows: [row('CASTLE', '2026-10-22'), row('LAPSE', '2026-10-30'), row('ERR', '2026-11-01'), row('LATER', '2026-11-02')],
     checks: [{ body: castle }, { body: lapsing }, { error: 'timeout' }], window: W });
-  assert.deepEqual(v.rows.map((r) => [r.license, r.verified]), [['LAPSE', 'ok'], ['ERR', 'failed'], ['LATER', 'unchecked']]);
-  assert.deepEqual([v.renewedOnVerify, v.verifyFailed], [1, 1]);
+  assert.deepEqual(v.rows.map((r) => [r.license, r.verified]), [['LAPSE', 'ok'], ['ERR', 'failed']]);
+  assert.deepEqual([v.renewedOnVerify, v.verifyFailed, v.notChecked], [1, 1, 1]);
   // A cancellation inside the window ends that policy, so it doesn't count as running past it.
   const cancelled = answer([ins('A', '10/1/2026', '10/1/2027', '10/25/2026')]);
   assert.equal(applyVerification({ rows: [row('C', '2026-10-25')], checks: [{ body: cancelled }], window: W }).rows.length, 1);
@@ -38,7 +38,7 @@ test('only the rows the report will list are checked, with slack for a requested
   const rows = Array.from({ length: 50 }, (_, k) => row(`L${k}`, '2026-10-30'));
   assert.equal(verifyCount(rows, { report: 'insurance' }), 50);
   assert.equal(verifyCount(rows, { report: 'insurance' }, 20), 20);
-  assert.equal(verifyCount(rows, { report: 'insurance', limit: 10 }), 30);
+  assert.equal(verifyCount(rows, { report: 'insurance', limit: 10 }), 40);
   assert.equal(verifyCount(rows.slice(0, 4), { report: 'insurance', limit: 10 }), 4);
   assert.equal(verifyCount(rows, { report: 'license' }), 0);
 });

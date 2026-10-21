@@ -32,7 +32,7 @@ function renderReportHtml({ title, query, window, rows, notes = [], stats = {}, 
     : ['Registration expires', 'Business', 'License / UBI', 'License type', 'Phone', 'Address'];
   const body = shown.map((r) => {
     const cells = [
-      `<strong>${esc(fmtDate(r.ends))}</strong>${r.cancelled ? '<br><span class="flag">Cancellation</span>' : ''}${r.verified === 'failed' || r.verified === 'unchecked' ? '<br><span class="flag">Not checked on Verify</span>' : ''}`,
+      `<strong>${esc(fmtDate(r.ends))}</strong>${r.cancelled ? '<br><span class="flag">Cancellation</span>' : ''}${r.verified === 'failed' ? '<br><span class="flag">Not checked on Verify</span>' : ''}`,
       esc(r.name),
       `<a href="${esc(r.verify)}">${esc(r.license)}</a><br><span class="muted">${esc(r.ubi)}</span>`,
       esc(r.specialties),
@@ -50,7 +50,9 @@ function renderReportHtml({ title, query, window, rows, notes = [], stats = {}, 
   if (stats.renewedCount) allNotes.push(`${stats.renewedCount} contractor${stats.renewedCount === 1 ? '' : 's'} with a policy ending in this window ${stats.renewedCount === 1 ? 'was' : 'were'} left out because another policy on file runs past it (renewed, or other coverage).`);
   if (stats.verifiedAt) allNotes.push(`Each listed contractor was checked on L&I's Verify site on ${stats.verifiedAt}.`);
   if (stats.renewedOnVerify) allNotes.push(`${stats.renewedOnVerify} more ${stats.renewedOnVerify === 1 ? 'was' : 'were'} left out because L&I's Verify site shows a policy running past this window (often a renewal that starts later, which the open data doesn't list yet).`);
-  const unchecked = shown.filter((r) => r.verified === 'failed' || r.verified === 'unchecked').length;
+  if (stats.notChecked && !query.limit) allNotes.push(`${stats.notChecked} more match${stats.notChecked === 1 ? '' : 'es'} in the open data ${stats.notChecked === 1 ? 'was' : 'were'} past the number checked on Verify and ${stats.notChecked === 1 ? 'isn\'t' : 'aren\'t'} listed. Narrow the request (a trade, city or shorter window) to see ${stats.notChecked === 1 ? 'it' : 'them'}.`);
+  if (query.limit && shown.length < query.limit && stats.verifiedAt && stats.notChecked) allNotes.push(`Only ${shown.length} of the ${query.limit} asked for were confirmed with no coverage past the window; ask again with a shorter list or a narrower request for more.`);
+  const unchecked = shown.filter((r) => r.verified === 'failed').length;
   if (unchecked) allNotes.push(`${unchecked} listed contractor${unchecked === 1 ? '' : 's'} couldn't be checked on Verify and ${unchecked === 1 ? 'is' : 'are'} marked; check ${unchecked === 1 ? 'it' : 'them'} by hand before relying on ${unchecked === 1 ? 'it' : 'them'}.`);
   if (query.daysCapped) allNotes.push(`The window was capped at ${query.days} days.`);
   return `<!doctype html>
