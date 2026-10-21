@@ -230,7 +230,10 @@ function parseUnderstanding({ ollama, request = '', prior = null, defaultDays = 
 
 /** One line for the report and email, e.g. "Plumbing contractors whose liability insurance expires in the next 14 days". */
 function describeQuery(q) {
-  const who = q.trades.length ? `${q.trades.map((t) => t[0].toUpperCase() + t.slice(1)).join(', ')} contractors` : 'Contractors';
+  // "general contractor" already names the contractor, so it reads "general contractors", not "… contractor contractors".
+  const names = q.trades.map((t) => (t === 'hvac' ? 'HVAC' : t.replace(/\s*contractors?$/, '')));
+  const list = names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : names[0];
+  const who = list ? `${list[0].toUpperCase()}${list.slice(1)} contractors` : 'Contractors';
   const where = [...q.cities.map((c) => titleCase(c)), ...q.counties.map((c) => `${titleCase(c)} County`)];
   const what = q.report === 'insurance' ? 'insurance on file with L&I expires' : 'contractor registration expires';
   const lead = q.limit ? `The ${q.limit} ${who.charAt(0).toLowerCase()}${who.slice(1)}` : who;
