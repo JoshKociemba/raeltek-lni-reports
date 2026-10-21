@@ -39,7 +39,7 @@ function renderReportHtml({ title, query, window, rows, notes = [], stats = {}, 
       `<span class="nowrap">${esc(r.phone)}</span>`,
       esc(r.address),
     ];
-    if (insurance) cells.push(`${esc(r.insurer)}${r.policy ? `<br><span class="muted">${esc(r.policy)}</span>` : ''}${r.agency ? `<br><span class="muted">Agent: ${esc(r.agency)}</span>` : ''}${r.amount ? `<br><span class="muted">${money(r.amount)}</span>` : ''}`);
+    if (insurance) cells.push(`${esc(r.insurer)}${r.policy ? `<br><span class="muted">${esc(r.policy)}</span>` : ''}${r.agency ? `<br><span class="muted">Agent: ${esc(r.agency)}</span>` : ''}${r.amount ? `<br><span class="muted">${money(r.amount)}</span>` : ''}${r.alsoOnFile ? `<br><span class="muted">Also on file: ${esc(r.alsoOnFile.insurer || r.alsoOnFile.policy)} to ${esc(fmtDate(r.alsoOnFile.ends))}</span>` : ''}`);
     return `<tr>${cells.map((c) => `<td>${c}</td>`).join('')}</tr>`;
   }).join('\n');
   const allNotes = [...notes];
@@ -84,7 +84,7 @@ ${rows.length ? `<table><thead><tr>${head.map((h) => `<th>${h}</th>`).join('')}<
 ${body}
 </tbody></table>` : '<p>No active contractors matched this request.</p>'}
 ${allNotes.length ? `<ul class="notes">${allNotes.map((n) => `<li>${esc(n)}</li>`).join('')}</ul>` : ''}
-<p class="source">Source: Washington State Department of Labor &amp; Industries contractor open data on data.wa.gov (General and Insurance datasets), refreshed each business day. Only active registrations are listed. When a contractor has several policies on file, only the newest (latest effective date) is shown. Each license number links to the L&amp;I Verify page; check it before relying on a record.</p>
+<p class="source">Source: Washington State Department of Labor &amp; Industries contractor open data on data.wa.gov (General and Insurance datasets), refreshed each business day. Only active registrations are listed. When a contractor has several policies on file, only the newest (latest effective date) is shown; an older policy that runs later is noted as also on file. Each license number links to the L&amp;I Verify page; check it before relying on a record.</p>
 </body></html>
 `;
 }

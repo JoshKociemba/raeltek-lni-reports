@@ -126,6 +126,7 @@ test('overlapping policies: only the newest policy and its expiration count', ()
   const newest = policy('AAA', '2026-10-30', { insurancepolicyno: 'NEW', effectivedate: '2026-04-30T00:00:00.000' });
   const r1 = run([contractor('AAA')], [old, newest]);
   assert.deepEqual(r1.rows.map((r) => [r.policy, r.ends]), [['NEW', '2026-10-30']]);
+  assert.deepEqual(r1.rows[0].alsoOnFile, { insurer: 'Ohio Security Ins Co', policy: 'OLD', ends: '2027-01-15' });
   // The older policy ends in the window, but a newer one runs past it: renewed.
   const ending = policy('BBB', '2026-10-25', { insurancepolicyno: 'OLD', effectivedate: '2025-10-25T00:00:00.000' });
   const renewal = policy('BBB', '2027-10-01', { insurancepolicyno: 'NEW', effectivedate: '2026-10-01T00:00:00.000' });
@@ -135,7 +136,7 @@ test('overlapping policies: only the newest policy and its expiration count', ()
   const running = policy('CCC', '2026-11-01', { insurancepolicyno: 'C11SO4415-01', effectivedate: '2025-04-10T00:00:00.000' });
   const cancelled = policy('CCC', '2027-04-10', { insurancepolicyno: 'CKA0551781', effectivedate: '2026-04-10T00:00:00.000', canceldate: '2026-10-25T00:00:00.000' });
   const r3 = run([contractor('CCC')], [running, cancelled]);
-  assert.deepEqual(r3.rows.map((r) => [r.policy, r.ends, r.cancelled]), [['C11SO4415-01', '2026-11-01', false]]);
+  assert.deepEqual(r3.rows.map((r) => [r.policy, r.ends, r.cancelled, r.alsoOnFile]), [['C11SO4415-01', '2026-11-01', false, null]]);
 });
 
 test('a policy re-keyed without dashes is the same policy', () => {

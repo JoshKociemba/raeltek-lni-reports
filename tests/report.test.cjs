@@ -19,6 +19,12 @@ test('the report lists rows, escapes text and links to Verify', () => {
   assert.match(html, /#073F43/);
 });
 
+test('an older policy that runs later is noted on the row', () => {
+  const html = renderReportHtml({ title: 'Plumbing', query, window, rows: [{ ...row, alsoOnFile: { insurer: 'Clear Spring', policy: 'cb1', ends: '2027-08-11' } }], generatedAt: '' });
+  assert.match(html, /Also on file: Clear Spring to Aug 11, 2027/);
+  assert.doesNotMatch(renderReportHtml({ title: 'Plumbing', query, window, rows: [row], generatedAt: '' }), /Also on file/);
+});
+
 test('an empty report says so and long reports are cut with a note', () => {
   assert.match(renderReportHtml({ title: 't', query, window, rows: [], generatedAt: '' }), /No active contractors matched/);
   const many = renderReportHtml({ title: 't', query, window, rows: Array(5).fill(row), generatedAt: '', maxRows: 2 });

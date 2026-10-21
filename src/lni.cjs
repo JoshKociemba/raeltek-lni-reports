@@ -207,7 +207,7 @@ function contractorRow(r) {
  * until it expires, so a renewal can overlap it; only the newest policy (latest effective date) counts, and its
  * end is the coverage end (a cancellation ends a policy early, and a cancelled policy is passed over while an
  * uncancelled one is on file). The contractor is listed when that falls in the
- * window. Someone with an older policy ending in the window but a newer one running past it has renewed, and is
+ * window, with a note when an older policy on file runs later. Someone with an older policy ending in the window but a newer one running past it has renewed, and is
  * counted, not listed.
  */
 function buildRows({ query, window, start, firstRows, lookups = [] }) {
@@ -248,6 +248,8 @@ function buildRows({ query, window, start, firstRows, lookups = [] }) {
     if (latest.end > window.to) { if (touched) renewedCount++; continue; }
     if (latest.end < window.from) { if (touched) endedCount++; continue; }
     const p = latest.p;
+    // An older policy that runs later may be separate coverage (L&I doesn't say which line a policy covers).
+    const later = running.filter((x) => x !== latest && x.end > latest.end).sort((a, b) => b.end.localeCompare(a.end))[0];
     rows.push({
       ...contractorRow(contractors.get(lic)),
       ends: latest.end,
@@ -256,6 +258,7 @@ function buildRows({ query, window, start, firstRows, lookups = [] }) {
       policy: String(p[i.policy] || '').trim(),
       amount: String(p[i.amount] || '').trim(),
       cancelled: !!day(p[i.cancelled]) && day(p[i.cancelled]) === latest.end,
+      alsoOnFile: later ? { insurer: String(later.p[i.company] || '').trim(), policy: String(later.p[i.policy] || '').trim(), ends: later.end } : null,
     });
   }
   return { rows: sort(rows), renewedCount, endedCount, truncated };
