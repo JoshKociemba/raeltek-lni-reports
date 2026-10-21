@@ -85,3 +85,12 @@ test('a requested count lists only the soonest rows and says so', () => {
   assert.equal(listedCount(rows, { limit: 2 }), 2);
   assert.equal(listedCount(rows, { limit: null }), 3);
 });
+
+test('the report says when rows were checked on Verify and marks the ones that could not be', () => {
+  const html = renderReportHtml({ title: 'Plumbing', query, window, rows: [{ ...row, verified: 'ok' }, { ...row, license: 'BBB', verified: 'failed' }], generatedAt: '',
+    stats: { verifiedAt: 'Oct 21, 2026 11:15 AM', renewedOnVerify: 3, verifyFailed: 1 } });
+  assert.match(html, /checked on L&amp;I&#39;s Verify site on Oct 21, 2026 11:15 AM/);
+  assert.match(html, /3 more were left out because L&amp;I&#39;s Verify site shows a policy running past this window/);
+  assert.equal((html.match(/Not checked on Verify/g) || []).length, 1);
+  assert.match(html, /1 listed contractor couldn&#39;t be checked on Verify and is marked/);
+});

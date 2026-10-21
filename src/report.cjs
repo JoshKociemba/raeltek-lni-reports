@@ -32,7 +32,7 @@ function renderReportHtml({ title, query, window, rows, notes = [], stats = {}, 
     : ['Registration expires', 'Business', 'License / UBI', 'License type', 'Phone', 'Address'];
   const body = shown.map((r) => {
     const cells = [
-      `<strong>${esc(fmtDate(r.ends))}</strong>${r.cancelled ? '<br><span class="flag">Cancellation</span>' : ''}`,
+      `<strong>${esc(fmtDate(r.ends))}</strong>${r.cancelled ? '<br><span class="flag">Cancellation</span>' : ''}${r.verified === 'failed' || r.verified === 'unchecked' ? '<br><span class="flag">Not checked on Verify</span>' : ''}`,
       esc(r.name),
       `<a href="${esc(r.verify)}">${esc(r.license)}</a><br><span class="muted">${esc(r.ubi)}</span>`,
       esc(r.specialties),
@@ -48,6 +48,10 @@ function renderReportHtml({ title, query, window, rows, notes = [], stats = {}, 
   if (stats.truncated) allNotes.push('L&I returned the maximum number of rows for one query, so some matches may be missing. Narrow the request.');
   if (stats.endedCount) allNotes.push(`${stats.endedCount} contractor${stats.endedCount === 1 ? '' : 's'} whose policy would have expired in this window ${stats.endedCount === 1 ? 'was' : 'were'} left out because it was already cancelled earlier.`);
   if (stats.renewedCount) allNotes.push(`${stats.renewedCount} contractor${stats.renewedCount === 1 ? '' : 's'} with a policy ending in this window ${stats.renewedCount === 1 ? 'was' : 'were'} left out because another policy on file runs past it (renewed, or other coverage).`);
+  if (stats.verifiedAt) allNotes.push(`Each listed contractor was checked on L&I's Verify site on ${stats.verifiedAt}.`);
+  if (stats.renewedOnVerify) allNotes.push(`${stats.renewedOnVerify} more ${stats.renewedOnVerify === 1 ? 'was' : 'were'} left out because L&I's Verify site shows a policy running past this window (often a renewal that starts later, which the open data doesn't list yet).`);
+  const unchecked = shown.filter((r) => r.verified === 'failed' || r.verified === 'unchecked').length;
+  if (unchecked) allNotes.push(`${unchecked} listed contractor${unchecked === 1 ? '' : 's'} couldn't be checked on Verify and ${unchecked === 1 ? 'is' : 'are'} marked; check ${unchecked === 1 ? 'it' : 'them'} by hand before relying on ${unchecked === 1 ? 'it' : 'them'}.`);
   if (query.daysCapped) allNotes.push(`The window was capped at ${query.days} days.`);
   return `<!doctype html>
 <html><head><meta charset="utf-8"><title>${esc(title)}</title>
@@ -84,7 +88,7 @@ ${rows.length ? `<table><thead><tr>${head.map((h) => `<th>${h}</th>`).join('')}<
 ${body}
 </tbody></table>` : '<p>No active contractors matched this request.</p>'}
 ${allNotes.length ? `<ul class="notes">${allNotes.map((n) => `<li>${esc(n)}</li>`).join('')}</ul>` : ''}
-<p class="source">Source: Washington State Department of Labor &amp; Industries contractor open data on data.wa.gov (General and Insurance datasets), refreshed each business day. Only active registrations are listed. When a contractor has several policies on file, only the newest (latest effective date) is shown; an older policy that runs later is noted as also on file. Each license number links to the L&amp;I Verify page; check it before relying on a record.</p>
+<p class="source">Source: Washington State Department of Labor &amp; Industries contractor open data on data.wa.gov (General and Insurance datasets), refreshed each business day. Only active registrations are listed, and each listed contractor is checked on L&amp;I's Verify site, which also shows policies that haven't started yet. When a contractor has several policies on file, only the newest (latest effective date) is shown; an older policy that runs later is noted as also on file. Each license number links to the L&amp;I Verify page; check it before relying on a record.</p>
 </body></html>
 `;
 }

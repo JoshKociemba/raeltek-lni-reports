@@ -58,3 +58,11 @@ test('every $(node) reference names a real node', () => {
   const names = new Set(workflow.nodes.map((n) => n.name));
   for (const ref of json.matchAll(/\$\('([^']+)'\)/g)) assert.ok(names.has(ref[1]), ref[1]);
 });
+
+test('Verify is checked one contractor at a time with a pause, and a failed check does not stop the report', () => {
+  const n = workflow.nodes.find((x) => x.name === 'Check on Verify');
+  assert.equal(n.parameters.url, 'https://secure.lni.wa.gov/verify/Controller.aspx/GetBusinessDetails');
+  assert.deepEqual(n.parameters.options.batching.batch, { batchSize: 1, batchInterval: 750 });
+  assert.equal(n.onError, 'continueRegularOutput');
+  assert.deepEqual(workflow.connections['Check on Verify?'].main.map((o) => o[0].node), ['Check on Verify', 'Finish report']);
+});
