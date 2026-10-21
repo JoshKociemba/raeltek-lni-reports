@@ -202,10 +202,11 @@ function contractorRow(r) {
 
 /**
  * The checked report rows, soonest first. lookups is [{ kind, rows }] from planLookups.
- * Insurance: the contractor must be active and in the trade and city asked for. Coverage on file ends when the
- * longest-lasting policy ends (a cancellation ends a policy early); the contractor is listed when that falls in
- * the window. Someone with a policy ending in the window but another running past it has renewed or has other
- * coverage, and is counted, not listed.
+ * Insurance: the contractor must be active and in the trade and city asked for. L&I keeps an old policy on file
+ * until it expires, so a renewal can overlap it; only the newest policy (latest effective date) counts, and its
+ * end is the coverage end (a cancellation ends a policy early). The contractor is listed when that falls in the
+ * window. Someone with an older policy ending in the window but a newer one running past it has renewed, and is
+ * counted, not listed.
  */
 function buildRows({ query, window, start, firstRows, lookups = [] }) {
   const g = FIELDS.general;
@@ -236,7 +237,8 @@ function buildRows({ query, window, start, firstRows, lookups = [] }) {
     // Would the first query have found this contractor? (A policy expiring or cancelled in the window.)
     const inside = (d) => d >= window.from && d <= window.to;
     const touched = ps.some((x) => inside(day(x.p[i.expires])) || inside(day(x.p[i.cancelled])));
-    const latest = ps.filter((x) => x.end).sort((a, b) => b.end.localeCompare(a.end))[0];
+    const latest = ps.filter((x) => x.end).sort((a, b) => day(b.p[i.starts]).localeCompare(day(a.p[i.starts]))
+      || b.end.localeCompare(a.end) || day(b.p[i.updated]).localeCompare(day(a.p[i.updated])))[0];
     if (!latest) continue;
     if (latest.end > window.to) { if (touched) renewedCount++; continue; }
     if (latest.end < window.from) { if (touched) endedCount++; continue; }

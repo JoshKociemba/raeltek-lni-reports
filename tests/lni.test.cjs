@@ -115,9 +115,22 @@ test('exact duplicate policy rows collapse to the latest update; a renewed term 
   assert.deepEqual([r.rows.length, r.renewedCount], [0, 1]);
 });
 
-test('with several policies in the window, the longest-lasting one is shown', () => {
+test('with several policies in the window and the same start, the one ending last is shown', () => {
   const { rows } = run([contractor('AAA')], [policy('AAA', '2026-10-22', { insurancepolicyno: 'GL' }), policy('AAA', '2026-11-02', { insurancepolicyno: 'UMB' })]);
   assert.deepEqual(rows.map((r) => r.policy), ['UMB']);
+});
+
+test('overlapping policies: only the newest policy and its expiration count', () => {
+  // An older policy still on file runs past the window, but the newest one ends inside it.
+  const old = policy('AAA', '2027-01-15', { insurancepolicyno: 'OLD', effectivedate: '2025-01-15T00:00:00.000' });
+  const newest = policy('AAA', '2026-10-30', { insurancepolicyno: 'NEW', effectivedate: '2026-04-30T00:00:00.000' });
+  const r1 = run([contractor('AAA')], [old, newest]);
+  assert.deepEqual(r1.rows.map((r) => [r.policy, r.ends]), [['NEW', '2026-10-30']]);
+  // The older policy ends in the window, but a newer one runs past it: renewed.
+  const ending = policy('BBB', '2026-10-25', { insurancepolicyno: 'OLD', effectivedate: '2025-10-25T00:00:00.000' });
+  const renewal = policy('BBB', '2027-10-01', { insurancepolicyno: 'NEW', effectivedate: '2026-10-01T00:00:00.000' });
+  const r2 = run([contractor('BBB')], [ending, renewal]);
+  assert.deepEqual([r2.rows.length, r2.renewedCount], [0, 1]);
 });
 
 test('starting from insurance, only active contractors in the city asked for are kept', () => {

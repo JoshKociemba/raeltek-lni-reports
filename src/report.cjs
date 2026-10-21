@@ -84,7 +84,7 @@ ${rows.length ? `<table><thead><tr>${head.map((h) => `<th>${h}</th>`).join('')}<
 ${body}
 </tbody></table>` : '<p>No active contractors matched this request.</p>'}
 ${allNotes.length ? `<ul class="notes">${allNotes.map((n) => `<li>${esc(n)}</li>`).join('')}</ul>` : ''}
-<p class="source">Source: Washington State Department of Labor &amp; Industries contractor open data on data.wa.gov (General and Insurance datasets), refreshed each business day. Only active registrations are listed. When a contractor has several policies on file, the one that lasts longest is shown. Each license number links to the L&amp;I Verify page; check it before relying on a record.</p>
+<p class="source">Source: Washington State Department of Labor &amp; Industries contractor open data on data.wa.gov (General and Insurance datasets), refreshed each business day. Only active registrations are listed. When a contractor has several policies on file, only the newest (latest effective date) is shown. Each license number links to the L&amp;I Verify page; check it before relying on a record.</p>
 </body></html>
 `;
 }
