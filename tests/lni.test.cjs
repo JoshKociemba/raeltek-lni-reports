@@ -131,6 +131,17 @@ test('overlapping policies: only the newest policy and its expiration count', ()
   const renewal = policy('BBB', '2027-10-01', { insurancepolicyno: 'NEW', effectivedate: '2026-10-01T00:00:00.000' });
   const r2 = run([contractor('BBB')], [ending, renewal]);
   assert.deepEqual([r2.rows.length, r2.renewedCount], [0, 1]);
+  // A newer policy that was cancelled doesn't replace an older one still running.
+  const running = policy('CCC', '2026-11-01', { insurancepolicyno: 'C11SO4415-01', effectivedate: '2025-04-10T00:00:00.000' });
+  const cancelled = policy('CCC', '2027-04-10', { insurancepolicyno: 'CKA0551781', effectivedate: '2026-04-10T00:00:00.000', canceldate: '2026-10-25T00:00:00.000' });
+  const r3 = run([contractor('CCC')], [running, cancelled]);
+  assert.deepEqual(r3.rows.map((r) => [r.policy, r.ends, r.cancelled]), [['C11SO4415-01', '2026-11-01', false]]);
+});
+
+test('a policy re-keyed without dashes is the same policy', () => {
+  const a = policy('AAA', '2027-02-13', { insurancepolicyno: 'NXTL97DD44-00-GL', lastupdatedate: '2026-01-01T00:00:00.000' });
+  const b = policy('AAA', '2027-02-13', { insurancepolicyno: 'NXTL97DD4400GL', lastupdatedate: '2026-03-01T00:00:00.000' });
+  assert.deepEqual(dedupePolicies([a, b]).map((p) => p.insurancepolicyno), ['NXTL97DD4400GL']);
 });
 
 test('starting from insurance, only active contractors in the city asked for are kept', () => {
