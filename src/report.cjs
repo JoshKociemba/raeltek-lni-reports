@@ -140,7 +140,8 @@ function replyText(ollama, { title, count }) {
   // Its reasoning can arrive with only the closing </think> tag, so drop everything up to the last one.
   if (t.includes('</think>')) t = t.slice(t.lastIndexOf('</think>') + '</think>'.length);
   else if (/<think>/.test(t)) return fallback;
-  t = t.replace(/^\s*(hi|hello|hey)\b[^\n]*\n/i, '').replace(/\n*(best|thanks|cheers|regards)[\s\S]*$/i, '')
+  // The email adds its own "Hi Josh,", so drop a greeting the model starts with, on its own line or not.
+  t = t.replace(/^\s*(hi|hello|hey|dear)\b[^,.!\n]*([,.!]\s*|\n)/i, '').replace(/\n*(best|thanks|cheers|regards)[\s\S]*$/i, '')
     .replace(/\s*[—–]\s*/g, ', ').replace(/^["']|["']$/g, '').trim();
   if (!t || t.length > 500 || /[[\]{}]/.test(t) || !/attach/i.test(t)) return fallback;
   return t;
