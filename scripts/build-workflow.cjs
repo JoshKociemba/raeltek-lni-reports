@@ -7,6 +7,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const { VERIFY_URL } = require('../src/verify.cjs');
 
 const ROOT = path.join(__dirname, '..');
 const OUT = path.join(ROOT, 'n8n', 'lni-inquiry-reports.workflow.json');
@@ -17,6 +18,7 @@ const DEPS = {
   'understand.cjs': [],
   'lni.cjs': [],
   'brand.cjs': [],
+  'verify.cjs': [],
   'report.cjs': ['inquiry.cjs', 'brand.cjs'],
 };
 
@@ -176,18 +178,53 @@ node('Fetch lookups', 'n8n-nodes-base.httpRequest', 4.2, [10, 0], {
   },
 });
 
-code('Build report', [11, 0], ['lni.cjs', 'report.cjs'], `
+// Builds the rows from the open data, then hands the ones to check on Verify to the next node, one item each.
+code('Build report', [11, 0], ['lni.cjs', 'verify.cjs'], `
 ${settings}
 const plan = $('Plan query').first().json;
 const firstRows = parseRows($('Fetch matches').first().json.body, 'L&I data');
 // Fetch lookups returns one item per Plan lookups item, in the same order.
 const kinds = $('Plan lookups').all().map((i) => i.json.kind);
 const lookups = $input.all().map((i, k) => ({ kind: kinds[k], rows: parseRows(i.json.body, 'L&I lookup') }));
-const { rows, renewedCount, endedCount, truncated } = buildRows({ query: plan.query, window: plan.window, start: plan.start, firstRows, lookups });
+const built = buildRows({ query: plan.query, window: plan.window, start: plan.start, firstRows, lookups });
+const n = verifyCount(built.rows, plan.query, Number(s.MAX_ROWS) || 300);
+if (!n) return [{ json: { check: false, built } }];
+return built.rows.slice(0, n).map((r, k) => ({ json: { check: true, body: verifyBody(r), ...(k === 0 ? { built } : {}) } }));
+`);
+
+ifNode('Check on Verify?', [12, 0], '={{ $json.check }}');
+
+// The same request the Verify page makes, one contractor at a time with a pause between, so L&I isn't hammered.
+// A failed check doesn't stop the report; that row is marked instead.
+node('Check on Verify', 'n8n-nodes-base.httpRequest', 4.2, [13, -1], {
+  method: 'POST',
+  url: VERIFY_URL,
+  sendBody: true,
+  specifyBody: 'json',
+  jsonBody: '={{ JSON.stringify($json.body) }}',
+  options: {
+    response: { response: { responseFormat: 'text', outputPropertyName: 'body' } },
+    timeout: 30000,
+    batching: { batch: { batchSize: 1, batchInterval: 750 } },
+  },
+}, { onError: 'continueRegularOutput' });
+
+code('Finish report', [14, 0], ['verify.cjs', 'report.cjs'], `
+${settings}
+const plan = $('Plan query').first().json;
+const { rows: built, renewedCount, endedCount, truncated } = $('Build report').first().json.built;
 const generatedAt = $now.setZone('America/Los_Angeles').toFormat('LLL d, yyyy h:mm a');
+let rows = built;
+let verify = {};
+if ($('Build report').first().json.check) {
+  const checks = $('Check on Verify').all().map((i) => ({ body: i.json.body, error: i.json.error }));
+  const v = applyVerification({ rows: built, checks, window: plan.window });
+  rows = v.rows;
+  verify = { verifiedAt: generatedAt, renewedOnVerify: v.renewedOnVerify, verifyFailed: v.verifyFailed, notChecked: v.notChecked };
+}
 const html = renderReportHtml({
   title: plan.title, query: plan.query, window: plan.window, rows, notes: plan.notes,
-  stats: { renewedCount, endedCount, truncated }, generatedAt, maxRows: Number(s.MAX_ROWS) || 300,
+  stats: { renewedCount, endedCount, truncated, ...verify }, generatedAt, maxRows: Number(s.MAX_ROWS) || 300,
 });
 // The email counts what the PDF lists, so a request for "5 painters" says 5, not every match.
 const count = listedCount(rows, plan.query, Number(s.MAX_ROWS) || 300);
@@ -196,21 +233,21 @@ return [{ json: { count, html, ollama_request: replyRequest({
 }) } }];
 `);
 
-ollama('Write reply', [12, 0], '={{ JSON.stringify($json.ollama_request) }}');
+ollama('Write reply', [15, 0], '={{ JSON.stringify($json.ollama_request) }}');
 
-code('Report HTML', [13, 0], [], `
-return [{ json: { html: $('Build report').first().json.html } }];
+code('Report HTML', [16, 0], [], `
+return [{ json: { html: $('Finish report').first().json.html } }];
 `);
 
 // Gotenberg needs the page as a file called index.html.
-node('HTML file', 'n8n-nodes-base.convertToFile', 1.1, [14, 0], {
+node('HTML file', 'n8n-nodes-base.convertToFile', 1.1, [17, 0], {
   operation: 'toText',
   sourceProperty: 'html',
   binaryPropertyName: 'data',
   options: { fileName: 'index.html' },
 });
 
-node('Make PDF', 'n8n-nodes-base.httpRequest', 4.2, [15, 0], {
+node('Make PDF', 'n8n-nodes-base.httpRequest', 4.2, [18, 0], {
   method: 'POST',
   url: "={{ $('Settings').first().json.GOTENBERG_URL }}/forms/chromium/convert/html",
   sendBody: true,
@@ -225,11 +262,11 @@ node('Make PDF', 'n8n-nodes-base.httpRequest', 4.2, [15, 0], {
   options: { response: { response: { responseFormat: 'file', outputPropertyName: 'data' } }, timeout: 120000 },
 });
 
-code('Reply email', [16, 0], ['report.cjs'], `
+code('Reply email', [19, 0], ['report.cjs'], `
 ${settings}
 ${today}
 const plan = $('Plan query').first().json;
-const report = $('Build report').first().json;
+const report = $('Finish report').first().json;
 const draft = buildReply({ inquiry: plan.inquiry, title: plan.title, count: report.count, ollama: $('Write reply').first().json, signature: s.SIGN_OFF });
 const pdf = $input.first().binary.data;
 return [{ json: { draft, threadId: plan.inquiry.threadId, messageId: plan.inquiry.messageId }, binary: { data: { ...pdf, fileName: reportFileName(plan.query, today), mimeType: 'application/pdf' } } }];
@@ -260,9 +297,9 @@ const draft = (name, pos, attach) => node(name, 'n8n-nodes-base.gmail', 2.1, pos
   },
 });
 
-ifNode('Send report now?', [17, 0], autoSend);
-reply('Send report reply', [18, -1], true);
-draft('Draft report reply', [18, 1], true);
+ifNode('Send report now?', [20, 0], autoSend);
+reply('Send report reply', [21, -1], true);
+draft('Draft report reply', [21, 1], true);
 
 code('Clarification email', [8, 2], ['report.cjs'], `
 ${settings}
@@ -283,7 +320,7 @@ const link = (from, to, output = 0) => {
 };
 [['New inquiry email', 'Settings'], ['Settings', 'Check inquiries'], ['Check inquiries', 'Loop over inquiries'],
   ['Prepare', 'Understand request'], ['Understand request', 'Plan query'], ['Plan query', 'Understood?'],
-  ['Fetch matches', 'Plan lookups'], ['Plan lookups', 'Fetch lookups'], ['Fetch lookups', 'Build report'], ['Build report', 'Write reply'],
+  ['Fetch matches', 'Plan lookups'], ['Plan lookups', 'Fetch lookups'], ['Fetch lookups', 'Build report'], ['Build report', 'Check on Verify?'], ['Check on Verify', 'Finish report'], ['Finish report', 'Write reply'],
   ['Write reply', 'Report HTML'], ['Report HTML', 'HTML file'], ['HTML file', 'Make PDF'], ['Make PDF', 'Reply email'], ['Reply email', 'Send report now?'],
   ['Send report reply', 'Loop over inquiries'], ['Draft report reply', 'Loop over inquiries'], ['Clarification email', 'Send clarification now?'],
   ['Send clarification', 'Loop over inquiries'], ['Draft clarification', 'Loop over inquiries']].forEach(([a, b]) => link(a, b));
@@ -291,6 +328,7 @@ link('Send report now?', 'Send report reply', 0); link('Send report now?', 'Draf
 link('Send clarification now?', 'Send clarification', 0); link('Send clarification now?', 'Draft clarification', 1);
 // Loop over inquiries: output 0 is "done", output 1 is the next inquiry.
 link('Loop over inquiries', 'Prepare', 1);
+link('Check on Verify?', 'Check on Verify', 0); link('Check on Verify?', 'Finish report', 1);
 link('Understood?', 'Fetch matches', 0); link('Understood?', 'Clarification email', 1);
 
 const workflow = {

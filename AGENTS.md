@@ -5,6 +5,6 @@ This repository holds an n8n workflow that answers `[L&I Report]` emails from an
 - `src/` is the master copy; run `npm test` and `npm run build:workflow` after changing it, and never edit Code nodes in the committed JSON by hand.
 - The report's logo and colors live in `src/brand.cjs`, generated from `assets/` by `npm run build:brand`. Follow the Raeltek brand guide (raeltek-website docs/RAELTEK-AI-BRAND-GUIDE.md): use the supplied logo unaltered and gold only for accents, never small text.
 - Replies go only to the person who asked, as a Gmail reply in their thread. Josh asked for them to be sent automatically (2026-10-20); `AUTO_SEND` off saves drafts instead. Never add another way to send mail; tests/workflow.test.cjs enforces this.
-- Use L&I's official open data (data.wa.gov). Don't scrape secure.lni.wa.gov/verify; the report links to it for manual checks.
+- Use L&I's official open data (data.wa.gov) to find matches. Josh asked (2026-10-21) for each listed contractor to also be checked on the Verify site (`src/verify.cjs`), because the open data omits policies not yet in effect. Keep those calls to the listed rows, one at a time with a pause, and never crawl Verify beyond that.
 - Never commit the allowed-sender list, credentials, tokens or report PDFs.
 - Use a feature branch and PR for every change; Josh merges. Never claim a workflow run or test succeeded unless it actually ran.

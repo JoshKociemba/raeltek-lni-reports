@@ -42,7 +42,7 @@ From josh@raeltek.com, email yourself with subject `[L&I Report] test` and a req
 - Bonds aren't supported yet (L&I stores bond expiry as text and keeps bond history). Requests for them get a clarification reply.
 - L&I's data has no county column, so a county in a request is noted in the report and not applied; ask by city instead.
 - L&I has insurance on file for very few electrical contractors and no elevator contractors, so those trades rarely appear in insurance reports. The report says so.
-- The open data is a daily snapshot (refreshed each business day), not live. The report says so, and each row links to Verify for the live record.
+- The open data is a daily snapshot (refreshed each business day), not live, and leaves out policies that haven't started yet. The workflow checks each listed contractor on Verify (the **Check on Verify** node) and drops anyone with a policy running past the window. If Verify is down or changes its format, rows stay on the report marked "Not checked on Verify" rather than failing the run.
 
 Column names, codes and data quirks are in [datasets.md](datasets.md). To try a query against live data without n8n: `npm run try -- --trade plumbing --days 14 --city Vancouver` writes `report.html`.
 
