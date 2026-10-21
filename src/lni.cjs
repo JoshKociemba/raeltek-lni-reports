@@ -159,14 +159,15 @@ function coverageEnd(row) {
 }
 
 /**
- * L&I sometimes lists the same policy twice; keep the most recently updated copy. A policy number with a
+ * L&I sometimes lists the same policy twice, at times with the number re-keyed without dashes or spaces; keep the
+ * most recently updated copy. A policy number with a
  * different term (a renewal under the same number) is a separate policy, so the dates are part of the key.
  */
 function dedupePolicies(rows) {
   const i = FIELDS.insurance;
   const best = new Map();
   for (const r of rows) {
-    const key = [licenseOf(r, i), String(r[i.policy] || '').trim().toUpperCase(), day(r[i.starts]), day(r[i.expires]), day(r[i.cancelled])].join('|');
+    const key = [licenseOf(r, i), String(r[i.policy] || '').toUpperCase().replace(/[^A-Z0-9]/g, ''), day(r[i.starts]), day(r[i.expires]), day(r[i.cancelled])].join('|');
     const prev = best.get(key);
     if (!prev || day(r[i.updated]) > day(prev[i.updated])) best.set(key, r);
   }
@@ -202,10 +203,12 @@ function contractorRow(r) {
 
 /**
  * The checked report rows, soonest first. lookups is [{ kind, rows }] from planLookups.
- * Insurance: the contractor must be active and in the trade and city asked for. Coverage on file ends when the
- * longest-lasting policy ends (a cancellation ends a policy early); the contractor is listed when that falls in
- * the window. Someone with a policy ending in the window but another running past it has renewed or has other
- * coverage, and is counted, not listed.
+ * Insurance: the contractor must be active and in the trade and city asked for. L&I keeps an old policy on file
+ * until it expires, so a renewal can overlap it; only the newest policy (latest effective date) counts, and its
+ * end is the coverage end (a cancellation ends a policy early, and a cancelled policy is passed over while an
+ * uncancelled one is on file). The contractor is listed when that falls in the
+ * window, with a note when an older policy on file runs later. Someone with an older policy ending in the window but a newer one running past it has renewed, and is
+ * counted, not listed.
  */
 function buildRows({ query, window, start, firstRows, lookups = [] }) {
   const g = FIELDS.general;
@@ -236,11 +239,17 @@ function buildRows({ query, window, start, firstRows, lookups = [] }) {
     // Would the first query have found this contractor? (A policy expiring or cancelled in the window.)
     const inside = (d) => d >= window.from && d <= window.to;
     const touched = ps.some((x) => inside(day(x.p[i.expires])) || inside(day(x.p[i.cancelled])));
-    const latest = ps.filter((x) => x.end).sort((a, b) => b.end.localeCompare(a.end))[0];
+    // A cancelled newer policy doesn't replace one still running, so cancelled policies only count when all are.
+    const dated = ps.filter((x) => x.end);
+    const running = dated.filter((x) => !day(x.p[i.cancelled]));
+    const latest = (running.length ? running : dated).sort((a, b) => day(b.p[i.starts]).localeCompare(day(a.p[i.starts]))
+      || b.end.localeCompare(a.end) || day(b.p[i.updated]).localeCompare(day(a.p[i.updated])))[0];
     if (!latest) continue;
     if (latest.end > window.to) { if (touched) renewedCount++; continue; }
     if (latest.end < window.from) { if (touched) endedCount++; continue; }
     const p = latest.p;
+    // An older policy that runs later may be separate coverage (L&I doesn't say which line a policy covers).
+    const later = running.filter((x) => x !== latest && x.end > latest.end).sort((a, b) => b.end.localeCompare(a.end))[0];
     rows.push({
       ...contractorRow(contractors.get(lic)),
       ends: latest.end,
@@ -249,6 +258,7 @@ function buildRows({ query, window, start, firstRows, lookups = [] }) {
       policy: String(p[i.policy] || '').trim(),
       amount: String(p[i.amount] || '').trim(),
       cancelled: !!day(p[i.cancelled]) && day(p[i.cancelled]) === latest.end,
+      alsoOnFile: later ? { insurer: String(later.p[i.company] || '').trim(), policy: String(later.p[i.policy] || '').trim(), ends: later.end } : null,
     });
   }
   return { rows: sort(rows), renewedCount, endedCount, truncated };
