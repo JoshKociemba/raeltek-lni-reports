@@ -79,6 +79,10 @@ test('a count in the request caps the list, and units or links never count', () 
   const u = parseUnderstanding({ ollama: reply({}), request: 'list of 500 painters, insurance, 14 days', maxRows: 300 });
   assert.equal(u.query.limit, 300);
   assert.equal(describeQuery({ ...u.query, limit: 5 }), 'The 5 painting contractors whose insurance on file with L&I expires soonest in the next 14 days');
+  const base = { ...u.query, limit: null };
+  assert.equal(describeQuery({ ...base, trades: ['general contractor'], limit: 10, days: 30 }), 'The 10 general contractors whose insurance on file with L&I expires soonest in the next 30 days');
+  assert.equal(describeQuery({ ...base, trades: ['general contractor', 'plumbing'] }), 'General and plumbing contractors whose insurance on file with L&I expires in the next 14 days');
+  assert.equal(describeQuery({ ...base, trades: ['hvac', 'roofing', 'siding'] }), 'HVAC, roofing and siding contractors whose insurance on file with L&I expires in the next 14 days');
 });
 
 test('a trade or count with no report type means insurance, with a note', () => {
