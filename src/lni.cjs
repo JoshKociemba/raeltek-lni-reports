@@ -44,6 +44,8 @@ const FIELDS = {
 const ACTIVE = 'A';
 const ROW_LIMIT = 50000;
 const CHUNK = 150;
+// The General specialty code for general contractors.
+const GENERAL_CONTRACTOR = '01';
 
 const quote = (s) => `'${String(s).replace(/'/g, "''")}'`;
 const day = (iso) => String(iso || '').slice(0, 10);
@@ -91,7 +93,9 @@ function generalWhere(query) {
  * The first query for a request. Insurance reports start from the policies ending or cancelled in the window
  * (a few thousand rows statewide), filtered by license type when the trade is a whole license type. A trade
  * defined by specialty codes starts from its active contractors instead, since insurance has no specialty
- * column and starting there would pull every construction policy.
+ * column and starting there would pull every construction policy. General contractors are the exception: about
+ * 52,000 are active (2026-10-21), more than one query returns, so the ones whose license numbers sort last were
+ * never seen. They start from the policies in the window (by license type), and the contractor lookup keeps the GCs.
  * Registration reports always start from the General dataset.
  */
 function planQuery({ query, today, appToken }) {
@@ -106,7 +110,8 @@ function planQuery({ query, today, appToken }) {
   if (query.cities.length) notes.push('Cities are the mailing address L&I has on file, which may differ from where a contractor works.');
   // Insurance has a license type column but no specialty, so type-only trades (plumbing, electrical) can start there too.
   const typeOnly = query.filters.every((f) => !f.codes && !f.like);
-  const start = query.report === 'insurance' && typeOnly ? 'insurance' : 'contractors';
+  const tooBig = query.filters.some((f) => (f.codes || []).includes(GENERAL_CONTRACTOR));
+  const start = query.report === 'insurance' && (typeOnly || tooBig) ? 'insurance' : 'contractors';
   const types = [...new Set(query.filters.map((f) => f.type))];
   const insWhere = [`(${between(i.expires, w)} OR ${between(i.cancelled, w)})`, `${i.status} = ${quote(ACTIVE)}`,
     types.length ? `${i.type} in (${list(types)})` : ''].filter(Boolean).join(' AND ');
