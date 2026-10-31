@@ -22,7 +22,7 @@ Every line should say `ok`. If one says `MISSING`, fix the name in `FIELDS` in `
 2. Pick the Gmail credential (`Gmail account`) on **New inquiry email**, **Send report reply**, **Draft report reply**, **Send clarification** and **Draft clarification**.
 3. Open **Settings**. `ALLOWED_SENDERS` starts as just `josh@raeltek.com`; add one address per line, or `@domain.com` for a whole domain. Leave the rest unless you need to change them:
    - `DEFAULT_DAYS` (14) when a request gives no window, `MAX_DAYS` (90) the longest allowed.
-   - `MAX_ROWS` (300) rows printed in one PDF.
+   - `MAX_ROWS` (300): the most contractors checked on Verify and listed in one PDF (for a requested count, up to four times that count, within the same limit).
    - `SOCRATA_APP_TOKEN` optional; a free token from data.wa.gov stops throttling if usage grows.
    - `SIGN_OFF` the line before your name (default `Thanks,`). Don't put a signature here: Raeltek's Workspace adds your signature when the email is sent.
    - `AUTO_SEND` on (default) sends each reply to the requester straight away; off saves it as a Gmail draft in the thread for you to review and send.
