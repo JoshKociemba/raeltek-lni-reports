@@ -7,4 +7,5 @@ This repository holds an n8n workflow that answers `[L&I Report]` emails from an
 - Replies go only to the person who asked, as a Gmail reply in their thread. Josh asked for them to be sent automatically (2026-10-20); `AUTO_SEND` off saves drafts instead. Never add another way to send mail; tests/workflow.test.cjs enforces this.
 - Use L&I's official open data (data.wa.gov) to find matches. Josh asked (2026-10-21) for each listed contractor to also be checked on the Verify site (`src/verify.cjs`), because the open data omits policies not yet in effect. Keep those calls to the listed rows, one at a time with a pause, and never crawl Verify beyond that.
 - Never commit the allowed-sender list, credentials, tokens or report PDFs.
+- Keep docs/status.md current after meaningful work, and never put the allowed senders in it.
 - Use a feature branch and PR for every change; Josh merges. Never claim a workflow run or test succeeded unless it actually ran.

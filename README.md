@@ -13,7 +13,7 @@ The workflow then:
 5. Prints a PDF report with Gotenberg, soonest expiry first. When the request names a count ("5 painters", "top 10 roofers"), the report lists only that many and notes how many matched in all. Each license number links to its [L&I Verify](https://secure.lni.wa.gov/verify/) page for spot checks.
 6. **Replies to the requester** in the same thread, with the PDF attached and a short note written by Ollama (with a fixed fallback). With `AUTO_SEND` off, it saves the reply as a Gmail draft for Josh to review instead. It never emails anyone except the person who asked.
 
-Setup is in [docs/setup.md](docs/setup.md). What's in L&I's data is in [docs/datasets.md](docs/datasets.md).
+Setup is in [docs/setup.md](docs/setup.md). What's live and what's still open is in [docs/status.md](docs/status.md). What's in L&I's data is in [docs/datasets.md](docs/datasets.md).
 
 ## Development
 
