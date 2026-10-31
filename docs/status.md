@@ -18,4 +18,12 @@ Updated 2026-10-31. Where the workflow stands and what's still open. Setup is in
 ## Open
 - Same-day expiry ties sort by name; Josh hasn't decided whether he wants another order.
 - Bonds aren't supported (L&I keeps bond expiry as text, with history).
-- Offering this to insurance brokers (Josh, 2026-10-25; recorded in the website repository's `decisions.md`): a fixed-price build on the agency's own n8n and email, or a Raeltek-run service with a setup fee, a monthly fee and exclusive territories. The run service has no price yet, and L&I Verify's terms of use need checking before it's sold. Charge flat fees, never per policy.
+- Offering this to insurance brokers (Josh, 2026-10-25; recorded in the website repository's `decisions.md`): a fixed-price build on the agency's own n8n and email, or a Raeltek-run service with a setup fee, a monthly fee and exclusive territories. The run service has no price yet. Charge flat fees, never per policy.
+
+## L&I terms check (2026-10-31)
+An agent's reading, not legal advice. L&I's [Access Agreement](https://lni.wa.gov/agency/access-agreement) covers its whole site, Verify included. Among prohibited conduct it lists: "Post or transmit or in any way exploit any information, software or other material for commercial purposes" and "Participate in the unauthorized use or disclosure by any party of any information accessed for any purpose". It says nothing about scripts or automated lookups. L&I's [privacy and security statement](https://lni.wa.gov/agency/privacy-security-statement) allows copying site content with credit, but says lists of individuals can't be used for commercial purposes (RCW 42.56.070), and it monitors traffic for unauthorized activity. The data.wa.gov datasets are published as open data, separately from these terms.
+
+What that means:
+- Josh's own use (reports for himself and a few contacts, no charge) is low risk at today's pace: a few hundred lookups at most per report, 750 ms apart.
+- A paid Raeltek-run report service (option B) built on Verify lookups is the risky case: selling the results reads as commercial exploitation under the Access Agreement, and sole-proprietor contractors are individuals under RCW 42.56.070. Before selling B, either ask L&I in writing whether paid reports using Verify checks are allowed, or run B on the data.wa.gov open data only, with the report saying early renewals can look like lapses.
+- Option A (a build on the agency's own n8n) puts the lookups in the agency's hands; tell them about these terms in the proposal.
