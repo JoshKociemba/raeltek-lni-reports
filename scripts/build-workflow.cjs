@@ -106,7 +106,7 @@ node('Settings', 'n8n-nodes-base.set', 3.4, [1, 0], {
       // Ollama and Gotenberg on the host machine, seen from inside the n8n container.
       ['OLLAMA_URL', 'string', 'http://host.docker.internal:11434'],
       ['OLLAMA_MODEL', 'string', 'qwen3:4b'],
-      ['GOTENBERG_URL', 'string', 'http://host.docker.internal:3010'],
+      ['GOTENBERG_URL', 'string', 'http://gotenberg:3000'],
     ].map(([name, type, value]) => ({ id: id(`Settings:${name}`), name, value, type })),
   },
   options: {},
