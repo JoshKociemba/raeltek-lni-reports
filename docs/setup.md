@@ -11,6 +11,8 @@ docker compose up -d
 
 It listens on `127.0.0.1:3010` only. n8n reaches it at `http://host.docker.internal:3010`.
 
+On Raeltek's Mac mini server (the live setup since 2026-11-07), skip this step: Gotenberg runs in the same compose file as n8n, so set `GOTENBERG_URL` in **Settings** to `http://gotenberg:3000`.
+
 ## 2. Check the dataset columns
 ```sh
 npm run check:fields

@@ -1,9 +1,11 @@
 # Status
 
-Updated 2026-10-31. Where the workflow stands and what's still open. Setup is in [setup.md](setup.md); what's in L&I's data is in [datasets.md](datasets.md).
+Updated 2026-11-07. Where the workflow stands and what's still open. Setup is in [setup.md](setup.md); what's in L&I's data is in [datasets.md](datasets.md).
 
 ## Live
-- Runs in Josh's outreach n8n (<http://localhost:5680>, Docker on his Mac) as "L&I inquiry reports", workflow id `aGTNuQAQgmLhjQuM`, **active** since 2026-10-20. It polls Gmail every minute, so it only answers while the Mac is awake. Gotenberg from this repository's `compose.yaml` makes the PDFs; Ollama (`qwen3:4b`) runs natively on the Mac.
+- Runs in Josh's outreach n8n as "L&I inquiry reports", workflow id `aGTNuQAQgmLhjQuM`, **active** since 2026-10-20. Since 2026-11-07 that n8n runs on Raeltek's always-on Mac mini server instead of Josh's MacBook (see the outreach repository's `project-status.md`, November 7 record), so reports no longer wait for the MacBook to be awake. It polls Gmail every minute. On the mini, Gotenberg runs in the same compose file as n8n (outside this repository) and `GOTENBERG_URL` is `http://gotenberg:3000`; this repository's `compose.yaml` is only for running it elsewhere. Ollama (`qwen3:4b`) runs natively on the mini at the same address as before.
+- The move was tested end to end on 2026-11-07: a real request produced and sent its PDF in about a minute.
+- The Gmail trigger searches the inbox only, so a request email archived before the next poll is skipped. Leave "[L&I Report]" emails in the inbox until the reply arrives.
 - The live copy matches `main` through PR #12 (general-contractor searches start from the expiring policies, 2026-10-22).
 - `AUTO_SEND` is on, so replies go straight to the requester. `MAX_ROWS` is 300 and the window is capped at 90 days (Josh's OK).
 - The allowed senders live only in the live workflow's Settings node, never in Git. There are three as of 2026-10-31: Josh's two addresses and one insurance-agent contact.
