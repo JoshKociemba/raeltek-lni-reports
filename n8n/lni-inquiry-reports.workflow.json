@@ -98,7 +98,7 @@
             {
               "id": "3734e26c-4a2a-44a8-a796-b3d7666029e3",
               "name": "GOTENBERG_URL",
-              "value": "http://host.docker.internal:3010",
+              "value": "http://gotenberg:3000",
               "type": "string"
             }
           ]

@@ -1,6 +1,8 @@
 name: raeltek-lni-reports
-# The workflow runs in the outreach n8n (raeltek-outreach, port 5680). This file only adds Gotenberg, which
-# turns the report's HTML into a PDF. n8n reaches it at http://host.docker.internal:3010.
+# Since 2026-11-07 the workflow runs in the n8n on the Mac mini, whose compose file
+# (~/raeltek-server/n8n/compose.yaml there) runs Gotenberg beside n8n; n8n reaches it at http://gotenberg:3000.
+# This file is the original MacBook Gotenberg (n8n reached it at http://host.docker.internal:3010),
+# kept only for the MacBook rollback described in raeltek-outreach docs/n8n-setup.md.
 services:
   gotenberg:
     image: gotenberg/gotenberg:8

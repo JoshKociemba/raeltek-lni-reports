@@ -1,15 +1,11 @@
 # Setting up the L&I inquiry workflow
 
-The workflow runs in the **outreach n8n** (`raeltek-outreach`, <http://localhost:5680>), which already has Josh's `josh@raeltek.com` Gmail credential and reaches Ollama on the Mac. The Gmail trigger polls the inbox every minute, so no public webhook or tunnel is needed.
+The workflow runs in the **outreach n8n**, which already has Josh's `josh@raeltek.com` Gmail credential. Since 2026-11-07 that n8n runs on the Mac mini server (reach the editor with `ssh -L 5680:127.0.0.1:5680 raeltek@192.168.77.170`, then <http://localhost:5680>), with Ollama running natively on the mini. The Gmail trigger polls the inbox every minute, so no public webhook or tunnel is needed. It searches only `in:inbox`, so leave a request in the inbox until it's answered; an archived request is skipped.
 
-## 1. Start Gotenberg (makes the PDFs)
-Docker Desktop running, then in this folder:
+## 1. Gotenberg (makes the PDFs)
+On the mini, Gotenberg runs in the same compose file as n8n (`~/raeltek-server/n8n/compose.yaml`), so it is already up. n8n reaches it at `http://gotenberg:3000` (the `GOTENBERG_URL` default).
 
-```sh
-docker compose up -d
-```
-
-It listens on `127.0.0.1:3010` only. n8n reaches it at `http://host.docker.internal:3010`.
+This folder's `compose.yaml` is the original MacBook Gotenberg (`127.0.0.1:3010`), kept only for a MacBook rollback. If you roll back, set `GOTENBERG_URL` to `http://host.docker.internal:3010` in Settings.
 
 ## 2. Check the dataset columns
 ```sh
